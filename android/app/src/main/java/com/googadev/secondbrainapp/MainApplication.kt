@@ -1,4 +1,4 @@
-package com.secondbrain
+package com.googadev.secondbrainapp
 
 import android.app.Application
 import com.facebook.react.PackageList

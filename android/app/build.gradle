@@ -77,9 +77,9 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace "com.secondbrain"
+    namespace "com.googadev.secondbrainapp"
     defaultConfig {
-        applicationId "com.secondbrain"
+        applicationId "com.googadev.secondbrainapp"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

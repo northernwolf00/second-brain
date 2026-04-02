@@ -16,6 +16,8 @@ end
 
 target 'SecondBrain' do
   config = use_native_modules!
+  pod 'RNWorklets', :path => '../node_modules/react-native-worklets'
+  pod 'NitroModules', :path => '../node_modules/react-native-nitro-modules'
 
   use_react_native!(
     :path => config[:reactNativePath],

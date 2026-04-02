@@ -1,4 +1,4 @@
-package com.secondbrain
+package com.googadev.secondbrainapp
 
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate

@@ -1,45 +1,61 @@
-/**
- * Sample React Native App
- * https://github.com/facebook/react-native
- *
- * @format
- */
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { DatabaseService } from './src/db/DatabaseService';
+import { NotificationService } from './src/services/NotificationService';
+import { RootNavigator } from './src/navigation/RootNavigator';
 
-import { NewAppScreen } from '@react-native/new-app-screen';
-import { StatusBar, StyleSheet, useColorScheme, View } from 'react-native';
-import {
-  SafeAreaProvider,
-  useSafeAreaInsets,
-} from 'react-native-safe-area-context';
+export default function App() {
+  const [ready, setReady] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-function App() {
-  const isDarkMode = useColorScheme() === 'dark';
+  useEffect(() => {
+    async function init() {
+      try {
+        await DatabaseService.init();
+        await NotificationService.requestPermission();
+        // Schedule daily resurface notification (non-blocking)
+        NotificationService.scheduleDailyResuface().catch(() => {});
+        setReady(true);
+      } catch (e: unknown) {
+        console.error('[App] init failed', e);
+        setError(String(e instanceof Error ? e.message : e));
+      }
+    }
+    init();
+  }, []);
+
+  if (error) {
+    return (
+      <View style={styles.errorContainer}>
+        <Text style={styles.errorTitle}>Startup error</Text>
+        <Text style={styles.errorMsg}>{error}</Text>
+      </View>
+    );
+  }
+
+  if (!ready) {
+    return (
+      <View style={styles.loadingContainer}>
+        <Text style={styles.loadingText}>Second Brain</Text>
+      </View>
+    );
+  }
 
   return (
-    <SafeAreaProvider>
-      <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
-      <AppContent />
-    </SafeAreaProvider>
-  );
-}
-
-function AppContent() {
-  const safeAreaInsets = useSafeAreaInsets();
-
-  return (
-    <View style={styles.container}>
-      <NewAppScreen
-        templateFileName="App.tsx"
-        safeAreaInsets={safeAreaInsets}
-      />
-    </View>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <RootNavigator />
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
+  loadingContainer: { flex: 1, backgroundColor: '#0f0f0f', justifyContent: 'center', alignItems: 'center' },
+  loadingText: { color: '#7c6af7', fontSize: 24, fontWeight: '700', letterSpacing: 1 },
+  errorContainer: { flex: 1, backgroundColor: '#0f0f0f', justifyContent: 'center', padding: 24 },
+  errorTitle: { color: '#f55', fontSize: 18, fontWeight: '700', marginBottom: 8 },
+  errorMsg: { color: '#aaa', fontSize: 13 },
 });
-
-export default App;
