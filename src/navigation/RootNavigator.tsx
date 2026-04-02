@@ -1,45 +1,59 @@
 import React from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, DarkTheme } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Text } from 'react-native';
+import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import { HomeScreen } from '../screens/HomeScreen';
 import { EditorScreen } from '../screens/EditorScreen';
 import { GraphScreen } from '../screens/GraphScreen';
 import { SearchScreen } from '../screens/SearchScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { DailyResurfaceScreen } from '../screens/DailyResurfaceScreen';
+import { AddNoteScreen } from '../screens/AddNoteScreen';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 
-const COLORS = { bg: '#0f0f0f', card: '#1a1a1a', accent: '#7c6af7', text: '#f0f0f0', muted: '#555', border: '#2a2a2a' };
+const C = {
+  bg: '#0f0f0f',
+  card: '#1a1a1a',
+  accent: '#7c6af7',
+  text: '#f0f0f0',
+  muted: '#555',
+  border: '#2a2a2a',
+};
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
 
 const NAV_THEME = {
-  dark: true,
+  ...DarkTheme,
   colors: {
-    primary: COLORS.accent,
-    background: COLORS.bg,
-    card: COLORS.card,
-    text: COLORS.text,
-    border: COLORS.border,
-    notification: COLORS.accent,
+    ...DarkTheme.colors,
+    primary: C.accent,
+    background: C.bg,
+    card: C.card,
+    text: C.text,
+    border: C.border,
+    notification: C.accent,
   },
 };
 
-function TabIcon({ name, focused }: { name: string; focused: boolean }) {
-  const icons: Record<string, string> = {
-    Notes: '📝',
-    Graph: '🕸',
-    Search: '🔍',
-    Resurface: '✨',
-    Settings: '⚙️',
+// Tab icon map — MaterialIcons names
+const TAB_ICONS: Record<string, string> = {
+  Notes: 'home',
+  Graph: 'bubble-chart',
+  Search: 'search',
+  Resurface: 'auto-awesome',
+  Settings: 'settings',
+};
+
+function wrap(Screen: React.ComponentType, label: string) {
+  return function WrappedScreen() {
+    return (
+      <ErrorBoundary fallbackLabel={label}>
+        <Screen />
+      </ErrorBoundary>
+    );
   };
-  return (
-    <Text style={{ fontSize: 18, opacity: focused ? 1 : 0.45 }}>
-      {icons[name] ?? '●'}
-    </Text>
-  );
 }
 
 function TabNavigator() {
@@ -47,34 +61,49 @@ function TabNavigator() {
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarIcon: ({ focused }) => <TabIcon name={route.name} focused={focused} />,
-        tabBarStyle: { backgroundColor: COLORS.card, borderTopColor: COLORS.border },
-        tabBarActiveTintColor: COLORS.accent,
-        tabBarInactiveTintColor: COLORS.muted,
+        tabBarIcon: ({ focused, color, size }) => (
+          <MaterialIcons
+            name={TAB_ICONS[route.name] ?? 'circle'}
+            size={size}
+            color={focused ? C.accent : C.muted}
+          />
+        ),
+        tabBarStyle: { backgroundColor: C.card, borderTopColor: C.border },
+        tabBarActiveTintColor: C.accent,
+        tabBarInactiveTintColor: C.muted,
         tabBarLabelStyle: { fontSize: 10 },
       })}>
-      <Tab.Screen name="Notes" component={HomeScreen} />
-      <Tab.Screen name="Graph" component={GraphScreen} />
-      <Tab.Screen name="Search" component={SearchScreen} />
-      <Tab.Screen name="Resurface" component={DailyResurfaceScreen} />
-      <Tab.Screen name="Settings" component={SettingsScreen} />
+      <Tab.Screen name="Notes"     component={wrap(HomeScreen, 'Notes')} />
+      <Tab.Screen name="Graph"     component={wrap(GraphScreen, 'Graph')} />
+      <Tab.Screen name="Search"    component={wrap(SearchScreen, 'Search')} />
+      <Tab.Screen name="Resurface" component={wrap(DailyResurfaceScreen, 'Resurface')} />
+      <Tab.Screen name="Settings"  component={wrap(SettingsScreen, 'Settings')} />
     </Tab.Navigator>
   );
 }
 
 export function RootNavigator() {
   return (
-    <NavigationContainer theme={NAV_THEME as any}>
+    <NavigationContainer theme={NAV_THEME}>
       <Stack.Navigator
         screenOptions={{
-          headerStyle: { backgroundColor: COLORS.card },
-          headerTintColor: COLORS.text,
+          headerStyle: { backgroundColor: C.card },
+          headerTintColor: C.text,
           headerShadowVisible: false,
         }}>
-        <Stack.Screen name="Main" component={TabNavigator} options={{ headerShown: false }} />
+        <Stack.Screen
+          name="Main"
+          component={TabNavigator}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="AddNote"
+          component={wrap(AddNoteScreen, 'AddNote')}
+          options={{ headerShown: false }}
+        />
         <Stack.Screen
           name="Editor"
-          component={EditorScreen}
+          component={wrap(EditorScreen, 'Editor')}
           options={{ title: 'Note' }}
         />
       </Stack.Navigator>
