@@ -17,36 +17,38 @@ export interface ColorPalette {
   inputBg: string;
 }
 
+// Midnight Blue dark theme
 export const darkColors: ColorPalette = {
-  bg:            '#09090f',
-  surface:       '#111118',
-  card:          '#18181f',
-  accent:        '#7c6af7',
-  accentSoft:    'rgba(124,106,247,0.14)',
-  accentDim:     'rgba(124,106,247,0.25)',
-  text:          '#ededf5',
-  textSecondary: '#9898aa',
-  muted:         '#55556a',
-  border:        '#232330',
-  danger:        '#ff5555',
-  tabBar:        '#111118',
-  inputBg:       '#0d0d14',
+  bg:            '#0d1117',
+  surface:       '#161b22',
+  card:          '#21262d',
+  accent:        '#388bfd',
+  accentSoft:    'rgba(56,139,253,0.14)',
+  accentDim:     'rgba(56,139,253,0.25)',
+  text:          '#e6edf3',
+  textSecondary: '#8b949e',
+  muted:         '#484f58',
+  border:        '#30363d',
+  danger:        '#f85149',
+  tabBar:        '#161b22',
+  inputBg:       '#0d1117',
 };
 
+// Warm Paper light theme
 export const lightColors: ColorPalette = {
-  bg:            '#f2f2f8',
-  surface:       '#ffffff',
-  card:          '#ffffff',
-  accent:        '#6b5ce7',
-  accentSoft:    'rgba(107,92,231,0.10)',
-  accentDim:     'rgba(107,92,231,0.18)',
-  text:          '#1a1a2e',
-  textSecondary: '#6b6b82',
-  muted:         '#aaaabc',
-  border:        '#e4e4ef',
-  danger:        '#e53935',
-  tabBar:        '#ffffff',
-  inputBg:       '#f5f5fb',
+  bg:            '#faf7f2',
+  surface:       '#f0ebe3',
+  card:          '#e8e0d0',
+  accent:        '#8b6f47',
+  accentSoft:    'rgba(139,111,71,0.12)',
+  accentDim:     'rgba(139,111,71,0.22)',
+  text:          '#2c2416',
+  textSecondary: '#6b5030',
+  muted:         '#9e8a70',
+  border:        '#d4c9b8',
+  danger:        '#c0392b',
+  tabBar:        '#f0ebe3',
+  inputBg:       '#faf7f2',
 };
 
 interface ThemeCtx {
