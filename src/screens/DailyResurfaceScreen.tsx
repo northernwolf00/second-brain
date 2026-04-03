@@ -3,12 +3,13 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { SearchService } from '../services/SearchService';
 import { Store } from '../store/mmkv';
-
-const COLORS = { bg: '#0f0f0f', card: '#1a1a1a', accent: '#7c6af7', text: '#f0f0f0', muted: '#666', border: '#2a2a2a' };
+import { useTheme } from '../theme';
+import { Icon } from '../components/Icon';
 
 export function DailyResurfaceScreen() {
   const navigation = useNavigation<any>();
   const [resurfaceNote, setResurfaceNote] = useState<{ id: string; title: string } | null>(null);
+  const { colors } = useTheme();
 
   useEffect(() => {
     Store.getResurfaceNoteId().then(cachedId => {
@@ -26,45 +27,75 @@ export function DailyResurfaceScreen() {
 
   if (!resurfaceNote) {
     return (
-      <View style={[styles.container, styles.center]}>
-        <Text style={styles.muted}>No old notes to resurface yet.</Text>
-        <Text style={styles.hint}>Notes older than 30 days will appear here.</Text>
+      <View style={[styles.container, styles.center, { backgroundColor: colors.bg }]}>
+        <View style={[styles.emptyIconWrap, { backgroundColor: colors.accentSoft }]}>
+          <Icon name="auto-awesome" size={36} color={colors.accent} />
+        </View>
+        <Text style={[styles.emptyTitle, { color: colors.text }]}>Nothing to resurface</Text>
+        <Text style={[styles.emptyHint, { color: colors.muted }]}>
+          Notes older than 30 days will appear here
+        </Text>
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <View style={styles.card}>
-        <Text style={styles.label}>From your past</Text>
-        <Text style={styles.title}>{resurfaceNote.title || 'Loading…'}</Text>
-        <Text style={styles.sub}>A note you haven't revisited in over 30 days.</Text>
-        <TouchableOpacity
-          style={styles.btn}
-          onPress={() => navigation.navigate('Editor', { noteId: resurfaceNote.id })}>
-          <Text style={styles.btnText}>Open this note</Text>
-        </TouchableOpacity>
+    <View style={[styles.container, { backgroundColor: colors.bg }]}>
+      <View style={styles.inner}>
+        <View style={[styles.badgeRow]}>
+          <View style={[styles.badge, { backgroundColor: colors.accentSoft }]}>
+            <Icon name="auto-awesome" size={13} color={colors.accent} />
+            <Text style={[styles.badgeText, { color: colors.accent }]}>From your past</Text>
+          </View>
+        </View>
+
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text style={[styles.cardTitle, { color: colors.text }]}>
+            {resurfaceNote.title || 'Loading…'}
+          </Text>
+          <Text style={[styles.cardSub, { color: colors.textSecondary }]}>
+            A note you haven't revisited in over 30 days.
+          </Text>
+          <TouchableOpacity
+            style={[styles.btn, { backgroundColor: colors.accent }]}
+            onPress={() => navigation.navigate('Editor', { noteId: resurfaceNote.id })}
+            activeOpacity={0.85}>
+            <Icon name="open-in-new" size={18} color="#fff" />
+            <Text style={styles.btnText}>Open this note</Text>
+          </TouchableOpacity>
+        </View>
+
+        <Text style={[styles.footerHint, { color: colors.muted }]}>
+          Refreshes daily · Write more notes to unlock this feature
+        </Text>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.bg, padding: 24 },
-  center: { justifyContent: 'center', alignItems: 'center' },
-  card: {
-    backgroundColor: COLORS.card,
-    borderRadius: 16,
-    padding: 24,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    marginTop: 40,
+  container: { flex: 1 },
+  center: { justifyContent: 'center', alignItems: 'center', gap: 12 },
+  inner: { flex: 1, padding: 24, justifyContent: 'center' },
+  emptyIconWrap: { width: 80, height: 80, borderRadius: 24, justifyContent: 'center', alignItems: 'center', marginBottom: 4 },
+  emptyTitle: { fontSize: 20, fontWeight: '700' },
+  emptyHint: { fontSize: 14, textAlign: 'center', paddingHorizontal: 40 },
+  badgeRow: { flexDirection: 'row', marginBottom: 16 },
+  badge: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20,
   },
-  label: { color: COLORS.accent, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', marginBottom: 10 },
-  title: { color: COLORS.text, fontSize: 22, fontWeight: '700', marginBottom: 8 },
-  sub: { color: COLORS.muted, fontSize: 14, marginBottom: 24 },
-  btn: { backgroundColor: COLORS.accent, borderRadius: 10, padding: 14, alignItems: 'center' },
-  btnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
-  muted: { color: COLORS.muted, fontSize: 16, marginBottom: 8 },
-  hint: { color: '#444', fontSize: 13 },
+  badgeText: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
+  card: {
+    borderRadius: 20, padding: 24, borderWidth: 1,
+    elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8,
+  },
+  cardTitle: { fontSize: 24, fontWeight: '700', marginBottom: 10, lineHeight: 32 },
+  cardSub: { fontSize: 14, lineHeight: 20, marginBottom: 24 },
+  btn: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    borderRadius: 14, padding: 15, justifyContent: 'center',
+  },
+  btnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  footerHint: { textAlign: 'center', fontSize: 12, marginTop: 20 },
 });

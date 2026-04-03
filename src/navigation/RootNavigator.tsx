@@ -1,5 +1,7 @@
 import React from 'react';
-import { NavigationContainer, DarkTheme } from '@react-navigation/native';
+import { View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { NavigationContainer, DarkTheme, DefaultTheme } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
@@ -10,68 +12,66 @@ import { SearchScreen } from '../screens/SearchScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { DailyResurfaceScreen } from '../screens/DailyResurfaceScreen';
 import { AddNoteScreen } from '../screens/AddNoteScreen';
+import { BackupSetupScreen } from '../screens/BackupSetupScreen';
+import { AIAssistantScreen } from '../screens/AIAssistantScreen';
 import { ErrorBoundary } from '../components/ErrorBoundary';
-
-const C = {
-  bg: '#0f0f0f',
-  card: '#1a1a1a',
-  accent: '#7c6af7',
-  text: '#f0f0f0',
-  muted: '#555',
-  border: '#2a2a2a',
-};
+import { useTheme } from '../theme';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
 
-const NAV_THEME = {
-  ...DarkTheme,
-  colors: {
-    ...DarkTheme.colors,
-    primary: C.accent,
-    background: C.bg,
-    card: C.card,
-    text: C.text,
-    border: C.border,
-    notification: C.accent,
-  },
-};
-
-// Tab icon map — MaterialIcons names
 const TAB_ICONS: Record<string, string> = {
-  Notes: 'home',
-  Graph: 'bubble-chart',
-  Search: 'search',
+  Notes:     'home',
+  Graph:     'bubble-chart',
+  Search:    'search',
   Resurface: 'auto-awesome',
-  Settings: 'settings',
+  Settings:  'settings',
 };
 
-function wrap(Screen: React.ComponentType, label: string) {
+function wrap(Screen: React.ComponentType, label: string, useSafeArea = true) {
   return function WrappedScreen() {
+    const insets = useSafeAreaInsets();
+    const { colors } = useTheme();
+    if (!useSafeArea) {
+      return (
+        <ErrorBoundary fallbackLabel={label}>
+          <Screen />
+        </ErrorBoundary>
+      );
+    }
     return (
-      <ErrorBoundary fallbackLabel={label}>
-        <Screen />
-      </ErrorBoundary>
+      <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: insets.top }}>
+        <ErrorBoundary fallbackLabel={label}>
+          <Screen />
+        </ErrorBoundary>
+      </View>
     );
   };
 }
 
 function TabNavigator() {
+  const { colors } = useTheme();
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarIcon: ({ focused, color, size }) => (
+        tabBarIcon: ({ focused, size }) => (
           <MaterialIcons
             name={TAB_ICONS[route.name] ?? 'circle'}
             size={size}
-            color={focused ? C.accent : C.muted}
+            color={focused ? colors.accent : colors.muted}
           />
         ),
-        tabBarStyle: { backgroundColor: C.card, borderTopColor: C.border },
-        tabBarActiveTintColor: C.accent,
-        tabBarInactiveTintColor: C.muted,
-        tabBarLabelStyle: { fontSize: 10 },
+        tabBarStyle: {
+          backgroundColor: colors.tabBar,
+          borderTopColor: colors.border,
+          borderTopWidth: 1,
+          paddingTop: 4,
+          height: 60,
+        },
+        tabBarActiveTintColor: colors.accent,
+        tabBarInactiveTintColor: colors.muted,
+        tabBarLabelStyle: { fontSize: 10, fontWeight: '600', marginBottom: 4 },
       })}>
       <Tab.Screen name="Notes"     component={wrap(HomeScreen, 'Notes')} />
       <Tab.Screen name="Graph"     component={wrap(GraphScreen, 'Graph')} />
@@ -83,29 +83,35 @@ function TabNavigator() {
 }
 
 export function RootNavigator() {
+  const { isDark, colors } = useTheme();
+
+  const navTheme = {
+    ...(isDark ? DarkTheme : DefaultTheme),
+    colors: {
+      ...(isDark ? DarkTheme : DefaultTheme).colors,
+      primary:      colors.accent,
+      background:   colors.bg,
+      card:         colors.surface,
+      text:         colors.text,
+      border:       colors.border,
+      notification: colors.accent,
+    },
+  };
+
   return (
-    <NavigationContainer theme={NAV_THEME}>
+    <NavigationContainer theme={navTheme}>
       <Stack.Navigator
         screenOptions={{
-          headerStyle: { backgroundColor: C.card },
-          headerTintColor: C.text,
+          headerStyle: { backgroundColor: colors.surface },
+          headerTintColor: colors.text,
           headerShadowVisible: false,
+          headerBackTitleVisible: false,
         }}>
-        <Stack.Screen
-          name="Main"
-          component={TabNavigator}
-          options={{ headerShown: false }}
-        />
-        <Stack.Screen
-          name="AddNote"
-          component={wrap(AddNoteScreen, 'AddNote')}
-          options={{ headerShown: false }}
-        />
-        <Stack.Screen
-          name="Editor"
-          component={wrap(EditorScreen, 'Editor')}
-          options={{ title: 'Note' }}
-        />
+        <Stack.Screen name="Main"        component={TabNavigator}                          options={{ headerShown: false }} />
+        <Stack.Screen name="AddNote"     component={wrap(AddNoteScreen, 'AddNote')}        options={{ headerShown: false }} />
+        <Stack.Screen name="Editor"      component={wrap(EditorScreen, 'Editor', false)}   options={{ title: 'Note' }} />
+        <Stack.Screen name="BackupSetup"   component={wrap(BackupSetupScreen, 'BackupSetup')}     options={{ headerShown: false }} />
+        <Stack.Screen name="AIAssistant"   component={wrap(AIAssistantScreen, 'AIAssistant', false)} options={{ headerShown: false }} />
       </Stack.Navigator>
     </NavigationContainer>
   );

@@ -6,8 +6,13 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { DatabaseService } from './src/db/DatabaseService';
 import { NotificationService } from './src/services/NotificationService';
 import { RootNavigator } from './src/navigation/RootNavigator';
+import { ThemeProvider, useTheme } from './src/theme';
+import { GoogleDriveService } from './src/services/GoogleDriveService';
 
-export default function App() {
+GoogleDriveService.configure();
+
+function AppInner() {
+  const { isDark, colors } = useTheme();
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -47,10 +52,18 @@ export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <StatusBar style="light" backgroundColor="#0f0f0f" />
+        <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={colors.bg} />
         <RootNavigator />
       </SafeAreaProvider>
     </GestureHandlerRootView>
+  );
+}
+
+export default function App() {
+  return (
+    <ThemeProvider>
+      <AppInner />
+    </ThemeProvider>
   );
 }
 

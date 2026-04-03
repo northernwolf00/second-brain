@@ -39,4 +39,21 @@ export const Store = {
 
   getResurfaceNoteId: () => getItem('resurfaceNoteId'),
   setResurfaceNoteId: (id: string) => setItem('resurfaceNoteId', id),
+
+  getGeminiApiKey: () => getItem('geminiApiKey'),
+  setGeminiApiKey: (key: string) => setItem('geminiApiKey', key),
+
+  getGoogleUser: async () => {
+    const raw = await getItem('googleUser');
+    return raw ? JSON.parse(raw) as { email: string; name: string; accessToken: string } : null;
+  },
+  setGoogleUser: (user: { email: string; name: string; accessToken: string }) =>
+    setItem('googleUser', JSON.stringify(user)),
+  clearGoogleUser: () => setItem('googleUser', ''),
+
+  getLastGoogleBackupAt: async () => {
+    const v = await getItem('lastGoogleBackupAt');
+    return v ? Number(v) : null;
+  },
+  setLastGoogleBackupAt: (ts: number) => setItem('lastGoogleBackupAt', String(ts)),
 };

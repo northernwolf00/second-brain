@@ -1,158 +1,442 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  TextInput,
-  Alert,
-  ScrollView,
-  ActivityIndicator,
+  View, Text, StyleSheet, TouchableOpacity, TextInput,
+  ScrollView, Switch, Linking, Alert, ActivityIndicator,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { Store } from '../store/mmkv';
-import { SyncService } from '../services/SyncService';
+import { GoogleDriveService } from '../services/GoogleDriveService';
+import { useTheme } from '../theme';
+import { Icon } from '../components/Icon';
 
-const COLORS = { bg: '#0f0f0f', card: '#1a1a1a', accent: '#7c6af7', text: '#f0f0f0', muted: '#666', border: '#2a2a2a', danger: '#f55' };
+// ─── small layout helpers ────────────────────────────────────────────────────
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function SectionLabel({ text, colors }: { text: string; colors: any }) {
+  return <Text style={[s.sectionLabel, { color: colors.muted }]}>{text}</Text>;
+}
+
+function Card({ children, colors }: { children: React.ReactNode; colors: any }) {
   return (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      <View style={styles.sectionCard}>{children}</View>
+    <View style={[s.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      {children}
     </View>
   );
 }
 
-function Row({ label, value, onPress, destructive }: { label: string; value?: string; onPress?: () => void; destructive?: boolean }) {
-  return (
-    <TouchableOpacity style={styles.row} onPress={onPress} disabled={!onPress}>
-      <Text style={[styles.rowLabel, destructive && { color: COLORS.danger }]}>{label}</Text>
-      {value ? <Text style={styles.rowValue}>{value}</Text> : null}
-    </TouchableOpacity>
-  );
+function Divider({ colors }: { colors: any }) {
+  return <View style={[s.divider, { backgroundColor: colors.border }]} />;
 }
 
-export function SettingsScreen() {
-  const [passphrase, setPassphrase] = useState('');
+// ─── Backup section ──────────────────────────────────────────────────────────
+
+function BackupSection({ colors }: { colors: any }) {
+  const navigation = useNavigation<any>();
+  const [googleUser, setGoogleUser] = useState<{ email: string; name: string } | null>(null);
+  const [lastBackup, setLastBackup] = useState<number | null>(null);
   const [syncing, setSyncing] = useState(false);
-  const [backupInfo, setBackupInfo] = useState<{ exists: boolean; size: number; mtime: Date | null } | null>(null);
-  const [lastSync, setLastSync] = useState<number | null>(null);
+  const [loadingUser, setLoadingUser] = useState(true);
 
   useEffect(() => {
-    Store.getSyncPassphrase().then(p => setPassphrase(p ?? ''));
-    Store.getLastSyncAt().then(setLastSync);
-    SyncService.getBackupInfo().then(setBackupInfo);
+    GoogleDriveService.getCurrentUser().then(u => {
+      setGoogleUser(u);
+      setLoadingUser(false);
+    });
+    Store.getLastGoogleBackupAt().then(setLastBackup);
   }, []);
 
-  const handleExport = async () => {
-    if (!passphrase.trim()) {
-      Alert.alert('Set passphrase', 'Enter a passphrase before exporting.');
-      return;
-    }
-    setSyncing(true);
-    try {
-      await SyncService.exportEncrypted(passphrase.trim());
-      await Store.setSyncPassphrase(passphrase.trim());
-      await Store.setLastSyncAt(Date.now());
-      setLastSync(Date.now());
-      const info = await SyncService.getBackupInfo();
-      setBackupInfo(info);
-      Alert.alert('Backup saved', `Saved to ${SyncService.backupPath()}\n\nEnable iCloud Drive sync in iOS Settings to sync automatically.`);
-    } catch (e: unknown) {
-      Alert.alert('Export failed', String(e instanceof Error ? e.message : e));
-    } finally {
-      setSyncing(false);
-    }
+  const formatTime = (ts: number) => {
+    const d = new Date(ts);
+    const isToday = d.toDateString() === new Date().toDateString();
+    return isToday
+      ? `Today ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
+      : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   };
 
-  const handleImport = async () => {
-    if (!passphrase.trim()) {
-      Alert.alert('Set passphrase', 'Enter the passphrase used when exporting.');
-      return;
-    }
-    Alert.alert('Import backup', 'This will merge the backup into your current notes (last-write-wins). Continue?', [
+  const handleBackupNow = async () => {
+    const passphrase = await Store.getSyncPassphrase();
+    if (!passphrase) { Alert.alert('No passphrase', 'Passphrase missing — please set up backup again.'); return; }
+    setSyncing(true);
+    try {
+      await GoogleDriveService.backup(passphrase);
+      const ts = Date.now();
+      setLastBackup(ts);
+      Alert.alert('Backed up', 'Notes saved to Google Drive.');
+    } catch (e: any) {
+      Alert.alert('Backup failed', e?.message ?? 'Unknown error');
+    } finally { setSyncing(false); }
+  };
+
+  const handleSignOut = () => {
+    Alert.alert('Disable backup?', 'You can re-enable it anytime.', [
       { text: 'Cancel', style: 'cancel' },
       {
-        text: 'Import',
-        onPress: async () => {
-          setSyncing(true);
-          try {
-            const { imported, skipped } = await SyncService.importEncrypted(passphrase.trim());
-            Alert.alert('Import complete', `${imported} notes imported, ${skipped} already up to date.`);
-          } catch (e: unknown) {
-            Alert.alert('Import failed', String(e instanceof Error ? e.message : e));
-          } finally {
-            setSyncing(false);
-          }
+        text: 'Sign out', style: 'destructive', onPress: async () => {
+          await GoogleDriveService.signOut();
+          setGoogleUser(null);
+          setLastBackup(null);
         },
       },
     ]);
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <View>
+      <SectionLabel text="💾  BACKUP" colors={colors} />
+      <Card colors={colors}>
+        {loadingUser ? (
+          <View style={s.row}>
+            <ActivityIndicator color={colors.accent} style={{ margin: 8 }} />
+          </View>
+        ) : googleUser ? (
+          // ── Connected ──
+          <>
+            <View style={s.row}>
+              <View style={[s.iconBox, { backgroundColor: 'rgba(34,197,94,0.15)' }]}>
+                <Icon name="cloud-done" size={18} color="#22c55e" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[s.rowTitle, { color: colors.text }]}>{googleUser.name}</Text>
+                <Text style={[s.rowSub, { color: colors.textSecondary }]}>{googleUser.email}</Text>
+              </View>
+            </View>
 
-      <Section title="Encrypted backup">
-        <View style={styles.passphraseRow}>
-          <TextInput
-            style={styles.passphraseInput}
-            value={passphrase}
-            onChangeText={setPassphrase}
-            placeholder="Encryption passphrase"
-            placeholderTextColor={COLORS.muted}
-            secureTextEntry
-            autoCapitalize="none"
-          />
-        </View>
+            <Divider colors={colors} />
 
-        <Row
-          label={syncing ? 'Working…' : 'Export encrypted backup'}
-          onPress={syncing ? undefined : handleExport}
-        />
+            <View style={[s.statusRow, { backgroundColor: 'rgba(34,197,94,0.1)' }]}>
+              <Icon name="check-circle" size={14} color="#22c55e" />
+              <Text style={[s.statusText, { color: '#22c55e' }]}>Auto-backup enabled</Text>
+            </View>
 
-        {backupInfo?.exists && (
-          <Row
-            label="Import from backup"
-            value={backupInfo.mtime ? backupInfo.mtime.toLocaleDateString() : undefined}
-            onPress={syncing ? undefined : handleImport}
-          />
+            {lastBackup && (
+              <Text style={[s.backupTime, { color: colors.muted }]}>
+                Last backup: {formatTime(lastBackup)}
+              </Text>
+            )}
+
+            <Divider colors={colors} />
+
+            <TouchableOpacity
+              style={[s.row, syncing && { opacity: 0.5 }]}
+              onPress={handleBackupNow}
+              disabled={syncing}>
+              <View style={[s.iconBox, { backgroundColor: colors.accentSoft }]}>
+                {syncing
+                  ? <ActivityIndicator color={colors.accent} size="small" />
+                  : <Icon name="backup" size={18} color={colors.accent} />}
+              </View>
+              <Text style={[s.rowTitle, { color: colors.text }]}>Back up now</Text>
+              <Icon name="chevron-right" size={20} color={colors.muted} />
+            </TouchableOpacity>
+
+            <Divider colors={colors} />
+
+            <TouchableOpacity style={s.row} onPress={handleSignOut}>
+              <View style={[s.iconBox, { backgroundColor: 'rgba(255,85,85,0.1)' }]}>
+                <Icon name="logout" size={18} color={colors.danger} />
+              </View>
+              <Text style={[s.rowTitle, { color: colors.danger }]}>Sign out</Text>
+            </TouchableOpacity>
+          </>
+        ) : (
+          // ── Not connected ──
+          <>
+            <View style={s.backupIntro}>
+              <Text style={[s.introTitle, { color: colors.text }]}>
+                Save your notes to Google Drive
+              </Text>
+              <Text style={[s.introSub, { color: colors.textSecondary }]}>
+                Encrypted backup, automatic after every save. Stored only in your Drive — we never see it.
+              </Text>
+            </View>
+
+            <Divider colors={colors} />
+
+            <TouchableOpacity
+              style={[s.googleBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+              onPress={() => navigation.navigate('BackupSetup')}
+              activeOpacity={0.8}>
+              <Text style={s.googleG}>G</Text>
+              <Text style={[s.googleBtnText, { color: colors.text }]}>Sign in with Google</Text>
+            </TouchableOpacity>
+
+            <Text style={[s.privacyNote, { color: colors.muted }]}>
+              🔒 Stored only in your Drive. We never see it.
+            </Text>
+          </>
         )}
+      </Card>
+    </View>
+  );
+}
 
-        {lastSync ? (
-          <Text style={styles.lastSync}>Last export: {new Date(lastSync).toLocaleString()}</Text>
-        ) : null}
+// ─── AI section ──────────────────────────────────────────────────────────────
 
-        <Text style={styles.syncHint}>
-          Backup is saved to your app's Documents folder. On iOS, enable iCloud Drive to sync it across devices.
-        </Text>
-      </Section>
+function AISection({ colors }: { colors: any }) {
+  const [savedKey, setSavedKey] = useState('');
+  const [inputKey, setInputKey] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-      <Section title="About">
-        <Row label="Second Brain" value="v1.0" />
-        <Row label="All features" value="Free" />
-      </Section>
+  useEffect(() => {
+    Store.getGeminiApiKey().then(k => {
+      console.log('[AISettings] Loaded key:', k ? k.slice(0, 8) + '••••••••' : 'none');
+      setSavedKey(k ?? '');
+      setLoading(false);
+    });
+  }, []);
 
-      {syncing && (
-        <View style={styles.syncOverlay}>
-          <ActivityIndicator color={COLORS.accent} />
+  const handleSave = useCallback(() => {
+    const trimmed = inputKey.trim();
+    if (!trimmed) return;
+    Store.setGeminiApiKey(trimmed);
+    console.log('[AISettings] API key saved:', trimmed.slice(0, 8) + '••••••••');
+    setSavedKey(trimmed);
+    setInputKey('');
+    setEditing(false);
+  }, [inputKey]);
+
+  const handleGetKey = () => {
+    Linking.openURL('https://aistudio.google.com/app/apikey');
+  };
+
+  const handleCancelEdit = () => {
+    setEditing(false);
+    setInputKey('');
+  };
+
+  if (loading) return null;
+
+  const hasKey = savedKey.length > 0;
+  const showInput = !hasKey || editing;
+
+  return (
+    <View>
+      <SectionLabel text="🤖  AI ASSISTANT" colors={colors} />
+      <Card colors={colors}>
+        {hasKey && !editing ? (
+          // ── Key is active ──
+          <>
+            <View style={s.row}>
+              <View style={[s.iconBox, { backgroundColor: colors.accentSoft }]}>
+                <Icon name="auto-awesome" size={18} color={colors.accent} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[s.activeLabel, { color: colors.accent }]}>✅  AI is active</Text>
+                <Text style={[s.maskedKey, { color: colors.textSecondary }]}>
+                  {savedKey.slice(0, 8)}{'•'.repeat(8)}
+                </Text>
+              </View>
+            </View>
+            <Divider colors={colors} />
+            <TouchableOpacity style={s.row} onPress={() => setEditing(true)}>
+              <View style={[s.iconBox, { backgroundColor: colors.accentSoft }]}>
+                <Icon name="edit" size={18} color={colors.accent} />
+              </View>
+              <Text style={[s.rowTitle, { color: colors.text }]}>Change key</Text>
+              <Icon name="chevron-right" size={20} color={colors.muted} />
+            </TouchableOpacity>
+          </>
+        ) : (
+          // ── No key / editing ──
+          <>
+            <View style={s.aiIntro}>
+              {!hasKey && (
+                <>
+                  <Text style={[s.introTitle, { color: colors.text }]}>Gemini API Key</Text>
+                  <Text style={[s.introSub, { color: colors.textSecondary }]}>
+                    Add a free key to enable AI summaries, tag suggestions, and smart search.
+                  </Text>
+                </>
+              )}
+              {editing && (
+                <Text style={[s.introTitle, { color: colors.text }]}>Change API Key</Text>
+              )}
+            </View>
+
+            <TextInput
+              style={[s.keyInput, { color: colors.text, backgroundColor: colors.inputBg, borderColor: colors.border }]}
+              value={inputKey}
+              onChangeText={setInputKey}
+              placeholder="AIza..."
+              placeholderTextColor={colors.muted}
+              secureTextEntry
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+
+            {inputKey.length > 0 && (
+              <TouchableOpacity
+                style={[s.saveKeyBtn, { backgroundColor: colors.accent }]}
+                onPress={handleSave}>
+                <Icon name="check" size={16} color="#fff" />
+                <Text style={s.saveKeyBtnText}>Save Key</Text>
+              </TouchableOpacity>
+            )}
+
+            {editing && (
+              <TouchableOpacity style={[s.cancelBtn, { borderColor: colors.border }]} onPress={handleCancelEdit}>
+                <Text style={[s.cancelBtnText, { color: colors.muted }]}>Cancel</Text>
+              </TouchableOpacity>
+            )}
+
+            <Divider colors={colors} />
+
+            <TouchableOpacity style={s.row} onPress={handleGetKey}>
+              <View style={[s.iconBox, { backgroundColor: colors.accentSoft }]}>
+                <Icon name="open-in-new" size={18} color={colors.accent} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[s.rowTitle, { color: colors.text }]}>Don't have a key?</Text>
+                <Text style={[s.rowSub, { color: colors.accent }]}>Get free key → aistudio.google.com</Text>
+              </View>
+            </TouchableOpacity>
+
+            <Divider colors={colors} />
+
+            <View style={[s.quotaRow, { backgroundColor: colors.accentSoft }]}>
+              <Icon name="info-outline" size={13} color={colors.accent} />
+              <Text style={[s.quotaText, { color: colors.accent }]}>
+                Free: 1,500 req/day · 15/min · No credit card
+              </Text>
+            </View>
+
+            <Text style={[s.privacyNote, { color: colors.muted }]}>
+              🔒 Key is stored only on your device. Never transmitted.
+            </Text>
+          </>
+        )}
+      </Card>
+    </View>
+  );
+}
+
+// ─── Appearance section ──────────────────────────────────────────────────────
+
+function AppearanceSection({ colors, isDark, toggle }: { colors: any; isDark: boolean; toggle: () => void }) {
+  return (
+    <View>
+      <SectionLabel text="⚙️  SETTINGS" colors={colors} />
+      <Card colors={colors}>
+        <View style={s.row}>
+          <View style={[s.iconBox, { backgroundColor: colors.accentSoft }]}>
+            <Icon name={isDark ? 'dark-mode' : 'light-mode'} size={18} color={colors.accent} />
+          </View>
+          <Text style={[s.rowTitle, { color: colors.text }]}>Dark mode</Text>
+          <Switch
+            value={isDark}
+            onValueChange={toggle}
+            trackColor={{ false: colors.border, true: colors.accentDim }}
+            thumbColor={isDark ? colors.accent : colors.muted}
+          />
         </View>
-      )}
+        <Divider colors={colors} />
+        <View style={s.row}>
+          <View style={[s.iconBox, { backgroundColor: colors.accentSoft }]}>
+            <Icon name="info" size={18} color={colors.accent} />
+          </View>
+          <Text style={[s.rowTitle, { color: colors.text }]}>Second Brain</Text>
+          <Text style={[s.rowValue, { color: colors.muted }]}>v1.0 — Free</Text>
+        </View>
+      </Card>
+    </View>
+  );
+}
+
+// ─── Main screen ─────────────────────────────────────────────────────────────
+
+export function SettingsScreen() {
+  const { colors, isDark, toggle } = useTheme();
+
+  return (
+    <ScrollView
+      style={[s.container, { backgroundColor: colors.bg }]}
+      contentContainerStyle={s.content}>
+
+      <Text style={[s.screenTitle, { color: colors.text }]}>Settings</Text>
+
+      <BackupSection colors={colors} />
+      <AISection colors={colors} />
+      <AppearanceSection colors={colors} isDark={isDark} toggle={toggle} />
+
+      <View style={{ height: 48 }} />
     </ScrollView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.bg },
+// ─── Styles ──────────────────────────────────────────────────────────────────
+
+const s = StyleSheet.create({
+  container: { flex: 1 },
   content: { padding: 16 },
-  section: { marginBottom: 24 },
-  sectionTitle: { color: COLORS.muted, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', marginBottom: 8, marginLeft: 4 },
-  sectionCard: { backgroundColor: COLORS.card, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden' },
-  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 14, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  rowLabel: { color: COLORS.text, fontSize: 14 },
-  rowValue: { color: COLORS.muted, fontSize: 13 },
-  passphraseRow: { padding: 12, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  passphraseInput: { color: COLORS.text, fontSize: 14, backgroundColor: '#111', borderRadius: 8, padding: 10, borderWidth: 1, borderColor: COLORS.border },
-  lastSync: { color: COLORS.muted, fontSize: 11, padding: 12, paddingTop: 0 },
-  syncHint: { color: '#444', fontSize: 11, padding: 12, paddingTop: 4, lineHeight: 16 },
-  syncOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.4)' },
+  screenTitle: { fontSize: 28, fontWeight: '800', marginBottom: 24, marginLeft: 4 },
+
+  sectionLabel: {
+    fontSize: 11, fontWeight: '800', textTransform: 'uppercase',
+    letterSpacing: 1, marginBottom: 8, marginLeft: 4, marginTop: 8,
+  },
+
+  card: {
+    borderRadius: 18, borderWidth: 1, overflow: 'hidden', marginBottom: 20,
+    elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.07, shadowRadius: 6,
+  },
+
+  row: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 16, paddingVertical: 14, gap: 12,
+  },
+  iconBox: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
+  rowTitle: { flex: 1, fontSize: 15, fontWeight: '600' },
+  rowSub: { fontSize: 12, marginTop: 1 },
+  rowValue: { fontSize: 13, fontWeight: '500' },
+
+  divider: { height: 1, marginLeft: 64 },
+
+  // Backup
+  backupIntro: { padding: 16, paddingBottom: 12 },
+  introTitle: { fontSize: 16, fontWeight: '700', marginBottom: 6 },
+  introSub: { fontSize: 13, lineHeight: 19 },
+
+  googleBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
+    margin: 16, paddingVertical: 14, borderRadius: 14, borderWidth: 1,
+  },
+  googleG: { fontSize: 18, fontWeight: '900', color: '#4285F4' },
+  googleBtnText: { fontSize: 15, fontWeight: '600' },
+
+  statusRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    marginHorizontal: 16, marginVertical: 10,
+    paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10,
+  },
+  statusText: { fontSize: 13, fontWeight: '700' },
+  backupTime: { fontSize: 12, marginHorizontal: 16, marginBottom: 10, marginTop: -4 },
+
+  privacyNote: { fontSize: 12, margin: 16, marginTop: 0, lineHeight: 17 },
+
+  // AI
+  aiIntro: { padding: 16, paddingBottom: 8 },
+  activeLabel: { fontSize: 15, fontWeight: '700', marginBottom: 3 },
+  maskedKey: { fontSize: 13, fontFamily: 'monospace' },
+
+  keyInput: {
+    marginHorizontal: 16, marginBottom: 10, borderRadius: 12, borderWidth: 1,
+    paddingHorizontal: 14, paddingVertical: 12, fontSize: 14,
+  },
+  saveKeyBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, marginHorizontal: 16, marginBottom: 8, paddingVertical: 13, borderRadius: 12,
+  },
+  saveKeyBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  cancelBtn: {
+    alignItems: 'center', marginHorizontal: 16, marginBottom: 8,
+    paddingVertical: 11, borderRadius: 12, borderWidth: 1,
+  },
+  cancelBtnText: { fontSize: 14, fontWeight: '500' },
+
+  quotaRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    marginHorizontal: 16, marginTop: 12, marginBottom: 8,
+    paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10,
+  },
+  quotaText: { fontSize: 12, fontWeight: '600', flex: 1 },
 });

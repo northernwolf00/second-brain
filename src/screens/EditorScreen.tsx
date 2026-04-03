@@ -13,25 +13,25 @@ import {
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { NoteService } from '../services/NoteService';
-import { AIService } from '../services/AIService';
 import { Note } from '../types';
 import { Store } from '../store/mmkv';
-
-const COLORS = { bg: '#0f0f0f', card: '#1a1a1a', accent: '#7c6af7', text: '#f0f0f0', muted: '#666', border: '#2a2a2a' };
+import { useAI } from '../hooks/useAI';
+import { useTheme } from '../theme';
 
 export function EditorScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const { noteId } = route.params as { noteId: string | null };
+  const { colors } = useTheme();
 
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [note, setNote] = useState<Note | null>(null);
   const [saving, setSaving] = useState(false);
-  const [aiSummary, setAiSummary] = useState('');
   const [suggestions, setSuggestions] = useState<Note[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [backlinks, setBacklinks] = useState<Note[]>([]);
+  const { summary: aiSummary, tags: aiTags, loading: aiLoading, analyzeNote } = useAI();
 
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentNoteId = useRef<string | null>(noteId);
@@ -55,7 +55,7 @@ export function EditorScreen() {
     navigation.setOptions({
       title: title || 'New note',
       headerRight: () =>
-        saving ? <ActivityIndicator color={COLORS.accent} style={{ marginRight: 16 }} /> : null,
+        saving ? <ActivityIndicator color={colors.accent} style={{ marginRight: 16 }} /> : null,
     });
   }, [navigation, title, saving]);
 
@@ -113,10 +113,9 @@ export function EditorScreen() {
     scheduleAutoSave(title, newBody);
   }, [body, title, scheduleAutoSave]);
 
-  const generateAISummary = useCallback(async () => {
-    const summary = await AIService.summarizeNote(body);
-    setAiSummary(summary);
-  }, [body]);
+  const handleAIAnalyze = useCallback(() => {
+    analyzeNote(title, body);
+  }, [title, body, analyzeNote]);
 
   // Save on unmount
   useEffect(() => {
@@ -129,26 +128,26 @@ export function EditorScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={styles.container}
+      style={[styles.container, { backgroundColor: colors.bg }]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={88}>
       <ScrollView style={styles.scroll} keyboardDismissMode="interactive">
         <TextInput
-          style={styles.titleInput}
+          style={[styles.titleInput, { color: colors.text, borderBottomColor: colors.border }]}
           value={title}
           onChangeText={handleTitleChange}
           placeholder="Title"
-          placeholderTextColor={COLORS.muted}
+          placeholderTextColor={colors.muted}
           multiline={false}
           returnKeyType="next"
         />
 
         <TextInput
-          style={styles.bodyInput}
+          style={[styles.bodyInput, { color: colors.text }]}
           value={body}
           onChangeText={handleBodyChange}
           placeholder="Start writing… use [[note title]] to link notes"
-          placeholderTextColor={COLORS.muted}
+          placeholderTextColor={colors.muted}
           multiline
           textAlignVertical="top"
           scrollEnabled={false}
@@ -156,30 +155,46 @@ export function EditorScreen() {
 
         {/* Wikilink autocomplete */}
         {showSuggestions && (
-          <View style={styles.suggestionBox}>
+          <View style={[styles.suggestionBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <FlatList
               data={suggestions}
               keyExtractor={n => n.id}
               keyboardShouldPersistTaps="always"
               renderItem={({ item }) => (
-                <TouchableOpacity style={styles.suggestionItem} onPress={() => insertWikilink(item.title)}>
-                  <Text style={styles.suggestionText}>{item.title}</Text>
+                <TouchableOpacity
+                  style={[styles.suggestionItem, { borderBottomColor: colors.border }]}
+                  onPress={() => insertWikilink(item.title)}>
+                  <Text style={[styles.suggestionText, { color: colors.text }]}>{item.title}</Text>
                 </TouchableOpacity>
               )}
             />
           </View>
         )}
 
-        {/* AI Summary */}
+        {/* AI Panel */}
         {body.length > 100 && (
           <View style={styles.aiSection}>
-            <TouchableOpacity style={styles.aiBtn} onPress={generateAISummary}>
-              <Text style={styles.aiBtnText}>Generate AI summary</Text>
+            <TouchableOpacity
+              style={[styles.aiBtn, { backgroundColor: colors.card, borderColor: colors.accent }]}
+              onPress={handleAIAnalyze}
+              disabled={aiLoading}>
+              <Text style={[styles.aiBtnText, { color: colors.accent }]}>
+                {aiLoading ? 'Analyzing…' : '✦ Analyze with Gemini'}
+              </Text>
             </TouchableOpacity>
             {!!aiSummary && (
-              <View style={styles.summaryBox}>
-                <Text style={styles.summaryLabel}>Summary</Text>
-                <Text style={styles.summaryText}>{aiSummary}</Text>
+              <View style={[styles.summaryBox, { backgroundColor: colors.accentSoft, borderColor: colors.accentDim }]}>
+                <Text style={[styles.summaryLabel, { color: colors.accent }]}>Summary</Text>
+                <Text style={[styles.summaryText, { color: colors.text }]}>{aiSummary}</Text>
+              </View>
+            )}
+            {aiTags.length > 0 && (
+              <View style={styles.tagsRow}>
+                {aiTags.map(tag => (
+                  <View key={tag} style={[styles.tagPill, { backgroundColor: colors.accentSoft, borderColor: colors.accentDim }]}>
+                    <Text style={[styles.tagText, { color: colors.accent }]}>#{tag}</Text>
+                  </View>
+                ))}
               </View>
             )}
           </View>
@@ -187,14 +202,14 @@ export function EditorScreen() {
 
         {/* Backlinks */}
         {backlinks.length > 0 && (
-          <View style={styles.backlinksSection}>
-            <Text style={styles.sectionLabel}>Linked from</Text>
+          <View style={[styles.backlinksSection, { borderTopColor: colors.border }]}>
+            <Text style={[styles.sectionLabel, { color: colors.muted }]}>Linked from</Text>
             {backlinks.map(bl => (
               <TouchableOpacity
                 key={bl.id}
                 style={styles.backlinkItem}
                 onPress={() => navigation.push('Editor', { noteId: bl.id })}>
-                <Text style={styles.backlinkText}>{bl.title || 'Untitled'}</Text>
+                <Text style={[styles.backlinkText, { color: colors.accent }]}>{bl.title || 'Untitled'}</Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -205,54 +220,27 @@ export function EditorScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.bg },
-  scroll: { flex: 1, padding: 16 },
+  container: { flex: 1 },
+  scroll: { flex: 1, padding: 18 },
   titleInput: {
-    color: COLORS.text,
-    fontSize: 22,
-    fontWeight: '700',
-    marginBottom: 12,
-    paddingVertical: 4,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    fontSize: 24, fontWeight: '700', marginBottom: 14,
+    paddingVertical: 4, borderBottomWidth: 1,
   },
-  bodyInput: {
-    color: COLORS.text,
-    fontSize: 15,
-    lineHeight: 24,
-    minHeight: 300,
-    paddingBottom: 40,
-  },
-  suggestionBox: {
-    backgroundColor: COLORS.card,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    maxHeight: 180,
-    marginBottom: 8,
-  },
-  suggestionItem: { padding: 12, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  suggestionText: { color: COLORS.text, fontSize: 14 },
-  aiSection: { marginTop: 16 },
-  aiBtn: {
-    backgroundColor: COLORS.card,
-    borderWidth: 1,
-    borderColor: COLORS.accent,
-    borderRadius: 8,
-    padding: 10,
-    alignItems: 'center',
-  },
-  aiBtnText: { color: COLORS.accent, fontSize: 13, fontWeight: '600' },
-  summaryBox: {
-    marginTop: 10,
-    backgroundColor: '#1e1a3a',
-    borderRadius: 8,
-    padding: 12,
-  },
-  summaryLabel: { color: COLORS.accent, fontSize: 11, fontWeight: '700', marginBottom: 4, textTransform: 'uppercase' },
-  summaryText: { color: COLORS.text, fontSize: 14, lineHeight: 20 },
-  backlinksSection: { marginTop: 24, borderTopWidth: 1, borderTopColor: COLORS.border, paddingTop: 16 },
-  sectionLabel: { color: COLORS.muted, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', marginBottom: 8 },
+  bodyInput: { fontSize: 15, lineHeight: 26, minHeight: 300, paddingBottom: 40 },
+  suggestionBox: { borderRadius: 12, borderWidth: 1, maxHeight: 180, marginBottom: 8 },
+  suggestionItem: { padding: 12, borderBottomWidth: 1 },
+  suggestionText: { fontSize: 14 },
+  aiSection: { marginTop: 20 },
+  aiBtn: { borderWidth: 1, borderRadius: 12, padding: 12, alignItems: 'center' },
+  aiBtnText: { fontSize: 13, fontWeight: '700' },
+  summaryBox: { marginTop: 12, borderRadius: 12, padding: 14, borderWidth: 1 },
+  summaryLabel: { fontSize: 10, fontWeight: '800', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.8 },
+  summaryText: { fontSize: 14, lineHeight: 21 },
+  tagsRow: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 10, gap: 6 },
+  tagPill: { borderRadius: 20, paddingHorizontal: 11, paddingVertical: 5, borderWidth: 1 },
+  tagText: { fontSize: 12, fontWeight: '600' },
+  backlinksSection: { marginTop: 28, borderTopWidth: 1, paddingTop: 18 },
+  sectionLabel: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 10 },
   backlinkItem: { paddingVertical: 8 },
-  backlinkText: { color: COLORS.accent, fontSize: 14 },
+  backlinkText: { fontSize: 14, fontWeight: '500' },
 });

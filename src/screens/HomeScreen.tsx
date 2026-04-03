@@ -1,57 +1,36 @@
 import React, { useLayoutEffect } from 'react';
 import {
-  View,
-  Text,
-  FlatList,
-  TouchableOpacity,
-  StyleSheet,
-  StatusBar,
-  Alert,
+  View, Text, FlatList, TouchableOpacity, StyleSheet, Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useNotes } from '../hooks/useNotes';
 import { Note } from '../types';
 import { Icon } from '../components/Icon';
+import { useTheme } from '../theme';
 
-const C = {
-  bg: '#0f0f0f',
-  card: '#1a1a1a',
-  accent: '#7c6af7',
-  text: '#f0f0f0',
-  muted: '#666',
-  border: '#2a2a2a',
-};
-
-function NoteCard({
-  note,
-  onPress,
-  onLongPress,
-}: {
-  note: Note;
-  onPress: () => void;
-  onLongPress: () => void;
-}) {
-  const date = new Date(note.updated_at).toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-  });
+function NoteCard({ note, onPress, onLongPress }: { note: Note; onPress: () => void; onLongPress: () => void }) {
+  const { colors } = useTheme();
+  const date = new Date(note.updated_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   return (
     <TouchableOpacity
-      style={styles.card}
+      style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}
       onPress={onPress}
       onLongPress={onLongPress}
-      activeOpacity={0.7}>
-      <View style={styles.cardRow}>
-        <Text style={styles.cardTitle} numberOfLines={1}>
-          {note.title || 'Untitled'}
-        </Text>
-        <Text style={styles.cardDate}>{date}</Text>
+      activeOpacity={0.75}>
+      <View style={[styles.cardAccent, { backgroundColor: colors.accent }]} />
+      <View style={styles.cardBody}>
+        <View style={styles.cardRow}>
+          <Text style={[styles.cardTitle, { color: colors.text }]} numberOfLines={1}>
+            {note.title || 'Untitled'}
+          </Text>
+          <Text style={[styles.cardDate, { color: colors.muted }]}>{date}</Text>
+        </View>
+        {!!note.body_preview && (
+          <Text style={[styles.cardPreview, { color: colors.textSecondary }]} numberOfLines={2}>
+            {note.body_preview}
+          </Text>
+        )}
       </View>
-      {!!note.body_preview && (
-        <Text style={styles.cardPreview} numberOfLines={2}>
-          {note.body_preview}
-        </Text>
-      )}
     </TouchableOpacity>
   );
 }
@@ -59,6 +38,7 @@ function NoteCard({
 export function HomeScreen() {
   const navigation = useNavigation<any>();
   const { notes, loading, refresh, deleteNote } = useNotes();
+  const { colors } = useTheme();
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -67,41 +47,45 @@ export function HomeScreen() {
           onPress={() => navigation.navigate('AddNote')}
           style={styles.headerBtn}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <Icon name="add" size={28} color={C.accent} />
+          <Icon name="add" size={26} color={colors.accent} />
         </TouchableOpacity>
       ),
     });
-  }, [navigation]);
+  }, [navigation, colors]);
 
   const confirmDelete = (id: string, title: string) => {
     Alert.alert('Delete note', `Delete "${title || 'Untitled'}"?`, [
       { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () => deleteNote(id),
-      },
+      { text: 'Delete', style: 'destructive', onPress: () => deleteNote(id) },
     ]);
   };
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={C.bg} />
+    <View style={[styles.container, { backgroundColor: colors.bg }]}>
       <FlatList
         data={notes}
         keyExtractor={n => n.id}
         onRefresh={refresh}
         refreshing={loading}
-        contentContainerStyle={
-          notes.length === 0 ? styles.emptyContainer : styles.list
+        contentContainerStyle={notes.length === 0 ? styles.emptyContainer : styles.list}
+        ListHeaderComponent={
+          notes.length > 0 ? (
+            <Text style={[styles.listHeader, { color: colors.muted }]}>
+              {notes.length} note{notes.length !== 1 ? 's' : ''}
+            </Text>
+          ) : null
         }
         ListEmptyComponent={
           <View style={styles.center}>
-            <Icon name="note-add" size={56} color="#2a2a2a" />
-            <Text style={styles.emptyTitle}>No notes yet</Text>
-            <Text style={styles.emptyHint}>Tap + to create your first note</Text>
+            <View style={[styles.emptyIconWrap, { backgroundColor: colors.accentSoft }]}>
+              <Icon name="note-add" size={36} color={colors.accent} />
+            </View>
+            <Text style={[styles.emptyTitle, { color: colors.text }]}>No notes yet</Text>
+            <Text style={[styles.emptyHint, { color: colors.muted }]}>
+              Tap the button to create your first note
+            </Text>
             <TouchableOpacity
-              style={styles.emptyBtn}
+              style={[styles.emptyBtn, { backgroundColor: colors.accent }]}
               onPress={() => navigation.navigate('AddNote')}>
               <Icon name="add" size={18} color="#fff" />
               <Text style={styles.emptyBtnText}>New note</Text>
@@ -117,75 +101,79 @@ export function HomeScreen() {
         )}
       />
 
-      {/* Floating action button */}
+      {/* New note FAB */}
       {notes.length > 0 && (
         <TouchableOpacity
-          style={styles.fab}
+          style={[styles.fab, { backgroundColor: colors.accent }]}
           onPress={() => navigation.navigate('AddNote')}
           activeOpacity={0.85}>
           <Icon name="add" size={28} color="#fff" />
         </TouchableOpacity>
       )}
+
+      {/* AI Assistant FAB */}
+      <TouchableOpacity
+        style={[styles.aiFab, { backgroundColor: colors.surface, borderColor: colors.border }]}
+        onPress={() => navigation.navigate('AIAssistant', {})}
+        activeOpacity={0.85}>
+        <Icon name="auto-awesome" size={22} color={colors.accent} />
+      </TouchableOpacity>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: C.bg },
-  list: { padding: 12, paddingBottom: 88 },
+  container: { flex: 1 },
+  list: { padding: 16, paddingBottom: 96 },
   emptyContainer: { flex: 1 },
-  center: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingTop: 80,
-    gap: 10,
+  listHeader: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 12 },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingTop: 80, gap: 12 },
+  emptyIconWrap: { width: 80, height: 80, borderRadius: 24, justifyContent: 'center', alignItems: 'center', marginBottom: 4 },
+  emptyTitle: { fontSize: 20, fontWeight: '700' },
+  emptyHint: { fontSize: 14, textAlign: 'center', paddingHorizontal: 40 },
+  emptyBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 22, paddingVertical: 13, borderRadius: 14, marginTop: 4,
   },
+  emptyBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   card: {
-    backgroundColor: C.card,
-    borderRadius: 12,
-    padding: 14,
+    flexDirection: 'row',
+    borderRadius: 14,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: C.border,
+    overflow: 'hidden',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
   },
-  cardRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  cardTitle: { color: C.text, fontSize: 15, fontWeight: '600', flex: 1, marginRight: 8 },
-  cardDate: { color: '#444', fontSize: 11 },
-  cardPreview: { color: C.muted, fontSize: 13, lineHeight: 18 },
+  cardAccent: { width: 3, borderRadius: 2 },
+  cardBody: { flex: 1, padding: 14 },
+  cardRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 },
+  cardTitle: { fontSize: 15, fontWeight: '600', flex: 1, marginRight: 8 },
+  cardDate: { fontSize: 11, fontWeight: '500' },
+  cardPreview: { fontSize: 13, lineHeight: 19 },
   headerBtn: { marginRight: 14 },
-  emptyTitle: { color: C.text, fontSize: 18, fontWeight: '600' },
-  emptyHint: { color: C.muted, fontSize: 14 },
-  emptyBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: C.accent,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 12,
-    marginTop: 8,
-  },
-  emptyBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
   fab: {
-    position: 'absolute',
-    bottom: 24,
-    right: 20,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: C.accent,
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 6,
+    position: 'absolute', bottom: 24, right: 20,
+    width: 58, height: 58, borderRadius: 29,
+    justifyContent: 'center', alignItems: 'center',
+    elevation: 8,
     shadowColor: '#7c6af7',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
+    shadowOpacity: 0.45,
+    shadowRadius: 10,
+  },
+  aiFab: {
+    position: 'absolute', bottom: 24, left: 20,
+    width: 50, height: 50, borderRadius: 25,
+    justifyContent: 'center', alignItems: 'center',
+    borderWidth: 1,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
   },
 });

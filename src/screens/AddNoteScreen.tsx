@@ -1,36 +1,20 @@
 import React, { useState, useRef, useCallback } from 'react';
 import {
-  View,
-  Text,
-  TextInput,
-  StyleSheet,
-  TouchableOpacity,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  FlatList,
-  Alert,
+  View, Text, TextInput, StyleSheet, TouchableOpacity,
+  KeyboardAvoidingView, Platform, ScrollView, FlatList, Alert, ActivityIndicator,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NoteService } from '../services/NoteService';
+import { AIService } from '../services/AIService';
 import { Note } from '../types';
 import { Icon } from '../components/Icon';
-
-const C = {
-  bg: '#0f0f0f',
-  card: '#1a1a1a',
-  accent: '#7c6af7',
-  accentDim: '#3d3580',
-  text: '#f0f0f0',
-  muted: '#666',
-  border: '#2a2a2a',
-  danger: '#f55',
-};
+import { useTheme } from '../theme';
 
 const QUICK_TAGS = ['idea', 'todo', 'journal', 'research', 'book', 'meeting', 'quote'];
 
 export function AddNoteScreen() {
   const navigation = useNavigation<any>();
+  const { colors } = useTheme();
 
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
@@ -39,10 +23,10 @@ export function AddNoteScreen() {
   const [suggestions, setSuggestions] = useState<Note[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [aiWorking, setAiWorking] = useState(false);
 
   const bodyRef = useRef<TextInput>(null);
 
-  // ── wikilink autocomplete ─────────────────────────────────────
   const handleBodyChange = useCallback((text: string) => {
     setBody(text);
     const lastAt = text.lastIndexOf('[[');
@@ -65,7 +49,6 @@ export function AddNoteScreen() {
     setShowSuggestions(false);
   }, [body]);
 
-  // ── tag management ────────────────────────────────────────────
   const addTag = useCallback((tag: string) => {
     const clean = tag.trim().toLowerCase().replace(/\s+/g, '-');
     if (!clean || tags.includes(clean)) return;
@@ -77,7 +60,6 @@ export function AddNoteScreen() {
     setTags(prev => prev.filter(t => t !== tag));
   }, []);
 
-  // ── save ──────────────────────────────────────────────────────
   const handleSave = useCallback(async () => {
     if (!title.trim() && !body.trim()) {
       Alert.alert('Empty note', 'Add a title or some content before saving.');
@@ -86,15 +68,38 @@ export function AddNoteScreen() {
     setSaving(true);
     try {
       const note = await NoteService.createNote(title.trim() || 'Untitled', body.trim());
-      // TODO: persist tags once tag service is wired up
       navigation.replace('Editor', { noteId: note.id });
     } catch (e) {
-      console.error('[AddNoteScreen] save failed', e);
       Alert.alert('Save failed', String(e instanceof Error ? e.message : e));
     } finally {
       setSaving(false);
     }
   }, [title, body, navigation]);
+
+  const handleAIImprove = useCallback(async () => {
+    if (!body.trim()) return;
+    setAiWorking(true);
+    const improved = await AIService.improveText(body);
+    if (improved) setBody(improved);
+    setAiWorking(false);
+  }, [body]);
+
+  const handleAIExpand = useCallback(async () => {
+    if (!body.trim()) return;
+    setAiWorking(true);
+    const expanded = await AIService.expandIdea(body);
+    if (expanded) setBody(expanded);
+    setAiWorking(false);
+  }, [body]);
+
+  const handleAIChat = useCallback(() => {
+    navigation.navigate('AIAssistant', {
+      text: body,
+      prompt: body.trim()
+        ? `I'm writing a note titled "${title || 'Untitled'}". Here's what I have so far:\n\n${body}\n\nHelp me continue or improve it.`
+        : '',
+    });
+  }, [navigation, title, body]);
 
   const handleDiscard = useCallback(() => {
     if (title || body) {
@@ -109,136 +114,152 @@ export function AddNoteScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={styles.root}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={0}>
+      style={[styles.root, { backgroundColor: colors.bg }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
 
-      {/* ── Header ── */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={handleDiscard} style={styles.headerBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-          <Icon name="close" size={24} color={C.muted} />
+      {/* Header */}
+      <View style={[styles.header, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
+        <TouchableOpacity onPress={handleDiscard} style={styles.headerIconBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <Icon name="close" size={22} color={colors.muted} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>New note</Text>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>New note</Text>
         <TouchableOpacity
           onPress={handleSave}
-          style={[styles.saveBtn, saving && styles.saveBtnDim]}
+          style={[styles.saveBtn, { backgroundColor: colors.accent }, saving && styles.dim]}
           disabled={saving}>
-          <Icon name="check" size={20} color="#fff" />
+          <Icon name="check" size={18} color="#fff" />
           <Text style={styles.saveBtnText}>{saving ? 'Saving…' : 'Save'}</Text>
         </TouchableOpacity>
       </View>
 
-      <ScrollView
-        style={styles.scroll}
-        keyboardDismissMode="interactive"
-        contentContainerStyle={styles.scrollContent}>
+      <ScrollView style={styles.scroll} keyboardDismissMode="interactive" contentContainerStyle={styles.scrollContent}>
 
-        {/* ── Title ── */}
+        {/* Title */}
         <TextInput
-          style={styles.titleInput}
+          style={[styles.titleInput, { color: colors.text, borderBottomColor: colors.border }]}
           value={title}
           onChangeText={setTitle}
           placeholder="Title"
-          placeholderTextColor={C.muted}
+          placeholderTextColor={colors.muted}
           returnKeyType="next"
           onSubmitEditing={() => bodyRef.current?.focus()}
           blurOnSubmit={false}
           autoFocus
         />
 
-        {/* ── Toolbar ── */}
-        <View style={styles.toolbar}>
-          <TouchableOpacity
-            style={styles.toolBtn}
-            onPress={() => setBody(b => b + '[[')}>
-            <Icon name="link" size={18} color={C.accent} />
-            <Text style={styles.toolLabel}>Link</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.toolBtn}
-            onPress={() => setBody(b => b + '**bold**')}>
-            <Icon name="format-bold" size={18} color={C.accent} />
-            <Text style={styles.toolLabel}>Bold</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.toolBtn}
-            onPress={() => setBody(b => b + '\n- ')}>
-            <Icon name="format-list-bulleted" size={18} color={C.accent} />
-            <Text style={styles.toolLabel}>List</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.toolBtn}
-            onPress={() => setBody(b => b + '\n## ')}>
-            <Icon name="title" size={18} color={C.accent} />
-            <Text style={styles.toolLabel}>Heading</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.toolBtn}
-            onPress={() => setBody(b => b + '\n> ')}>
-            <Icon name="format-quote" size={18} color={C.accent} />
-            <Text style={styles.toolLabel}>Quote</Text>
-          </TouchableOpacity>
+        {/* Formatting toolbar */}
+        <View style={[styles.toolbar, { borderBottomColor: colors.border }]}>
+          {[
+            { icon: 'link', label: 'Link', action: () => setBody(b => b + '[[') },
+            { icon: 'format-bold', label: 'Bold', action: () => setBody(b => b + '**bold**') },
+            { icon: 'format-list-bulleted', label: 'List', action: () => setBody(b => b + '\n- ') },
+            { icon: 'title', label: 'H2', action: () => setBody(b => b + '\n## ') },
+            { icon: 'format-quote', label: 'Quote', action: () => setBody(b => b + '\n> ') },
+          ].map(({ icon, label, action }) => (
+            <TouchableOpacity
+              key={label}
+              style={[styles.toolBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+              onPress={action}>
+              <Icon name={icon} size={17} color={colors.accent} />
+              <Text style={[styles.toolLabel, { color: colors.muted }]}>{label}</Text>
+            </TouchableOpacity>
+          ))}
         </View>
 
-        {/* ── Body ── */}
+        {/* Body */}
         <TextInput
           ref={bodyRef}
-          style={styles.bodyInput}
+          style={[styles.bodyInput, { color: colors.text }]}
           value={body}
           onChangeText={handleBodyChange}
-          placeholder={"Start writing…\n\nTip: type [[ to link to another note"}
-          placeholderTextColor={C.muted}
+          placeholder={'Start writing…\n\nTip: type [[ to link to another note'}
+          placeholderTextColor={colors.muted}
           multiline
           textAlignVertical="top"
           scrollEnabled={false}
         />
 
-        {/* ── Wikilink autocomplete ── */}
+        {/* AI toolbar — shown when there's content */}
+        {body.length > 20 && (
+          <View style={[styles.aiBar, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            {aiWorking ? (
+              <View style={styles.aiBarLoading}>
+                <ActivityIndicator color={colors.accent} size="small" />
+                <Text style={[styles.aiBarLoadingText, { color: colors.accent }]}>AI working…</Text>
+              </View>
+            ) : (
+              <>
+                <TouchableOpacity
+                  style={[styles.aiBarBtn, { borderColor: colors.border }]}
+                  onPress={handleAIImprove}>
+                  <Icon name="auto-fix-high" size={15} color={colors.accent} />
+                  <Text style={[styles.aiBarBtnText, { color: colors.accent }]}>Improve</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.aiBarBtn, { borderColor: colors.border }]}
+                  onPress={handleAIExpand}>
+                  <Icon name="expand" size={15} color={colors.accent} />
+                  <Text style={[styles.aiBarBtnText, { color: colors.accent }]}>Expand</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.aiBarBtn, styles.aiBarBtnAccent, { backgroundColor: colors.accentSoft, borderColor: colors.accentDim }]}
+                  onPress={handleAIChat}>
+                  <Icon name="chat" size={15} color={colors.accent} />
+                  <Text style={[styles.aiBarBtnText, { color: colors.accent }]}>Ask AI</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        )}
+
+        {/* Wikilink autocomplete */}
         {showSuggestions && (
-          <View style={styles.suggestBox}>
+          <View style={[styles.suggestBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <FlatList
               data={suggestions}
               keyExtractor={n => n.id}
               keyboardShouldPersistTaps="always"
               renderItem={({ item }) => (
                 <TouchableOpacity
-                  style={styles.suggestItem}
+                  style={[styles.suggestItem, { borderBottomColor: colors.border }]}
                   onPress={() => insertWikilink(item.title)}>
-                  <Icon name="insert-link" size={16} color={C.accent} />
-                  <Text style={styles.suggestText}>{item.title}</Text>
+                  <Icon name="insert-link" size={16} color={colors.accent} />
+                  <Text style={[styles.suggestText, { color: colors.text }]}>{item.title}</Text>
                 </TouchableOpacity>
               )}
             />
           </View>
         )}
 
-        {/* ── Tags ── */}
-        <View style={styles.tagsSection}>
-          <View style={styles.tagsRow}>
-            <Icon name="label-outline" size={16} color={C.muted} />
-            <Text style={styles.tagsLabel}>Tags</Text>
+        {/* Tags */}
+        <View style={[styles.tagsSection, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={styles.tagsHeader}>
+            <Icon name="label-outline" size={15} color={colors.muted} />
+            <Text style={[styles.tagsLabel, { color: colors.muted }]}>Tags</Text>
           </View>
 
-          <View style={styles.tagChips}>
-            {tags.map(tag => (
-              <TouchableOpacity
-                key={tag}
-                style={styles.tagChip}
-                onPress={() => removeTag(tag)}>
-                <Text style={styles.tagChipText}>#{tag}</Text>
-                <Icon name="close" size={12} color={C.accent} />
-              </TouchableOpacity>
-            ))}
-          </View>
+          {tags.length > 0 && (
+            <View style={styles.tagChips}>
+              {tags.map(tag => (
+                <TouchableOpacity
+                  key={tag}
+                  style={[styles.tagChip, { backgroundColor: colors.accentSoft }]}
+                  onPress={() => removeTag(tag)}>
+                  <Text style={[styles.tagChipText, { color: colors.accent }]}>#{tag}</Text>
+                  <Icon name="close" size={11} color={colors.accent} />
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
 
-          {/* Quick tag suggestions */}
+          {/* Quick tags */}
           <View style={styles.quickTags}>
             {QUICK_TAGS.filter(t => !tags.includes(t)).map(tag => (
               <TouchableOpacity
                 key={tag}
-                style={styles.quickTag}
+                style={[styles.quickTag, { borderColor: colors.border }]}
                 onPress={() => addTag(tag)}>
-                <Text style={styles.quickTagText}>+{tag}</Text>
+                <Text style={[styles.quickTagText, { color: colors.textSecondary }]}>+{tag}</Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -246,17 +267,17 @@ export function AddNoteScreen() {
           {/* Custom tag input */}
           <View style={styles.tagInputRow}>
             <TextInput
-              style={styles.tagInput}
+              style={[styles.tagInput, { color: colors.text, backgroundColor: colors.inputBg, borderColor: colors.border }]}
               value={tagInput}
               onChangeText={setTagInput}
               placeholder="Add custom tag…"
-              placeholderTextColor={C.muted}
+              placeholderTextColor={colors.muted}
               returnKeyType="done"
               onSubmitEditing={() => addTag(tagInput)}
               blurOnSubmit={false}
             />
             <TouchableOpacity
-              style={[styles.tagAddBtn, !tagInput.trim() && styles.tagAddBtnDim]}
+              style={[styles.tagAddBtn, { backgroundColor: colors.accent }, !tagInput.trim() && styles.dim]}
               onPress={() => addTag(tagInput)}
               disabled={!tagInput.trim()}>
               <Icon name="add" size={18} color="#fff" />
@@ -270,145 +291,71 @@ export function AddNoteScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: C.bg },
-
-  // Header
+  root: { flex: 1 },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: C.card,
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 16, paddingVertical: 13,
     borderBottomWidth: 1,
-    borderBottomColor: C.border,
   },
-  headerBtn: { padding: 4 },
-  headerTitle: { flex: 1, color: C.text, fontSize: 16, fontWeight: '600', marginLeft: 12 },
+  headerIconBtn: { padding: 4 },
+  headerTitle: { flex: 1, fontSize: 16, fontWeight: '700', marginLeft: 12 },
   saveBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: C.accent,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 10,
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 14, paddingVertical: 9, borderRadius: 12,
   },
-  saveBtnDim: { opacity: 0.6 },
   saveBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
-
+  dim: { opacity: 0.5 },
   scroll: { flex: 1 },
-  scrollContent: { padding: 16, paddingBottom: 60 },
-
-  // Title
+  scrollContent: { padding: 18, paddingBottom: 60 },
   titleInput: {
-    color: C.text,
-    fontSize: 24,
-    fontWeight: '700',
-    marginBottom: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: C.border,
-    paddingBottom: 10,
+    fontSize: 24, fontWeight: '700', marginBottom: 10,
+    borderBottomWidth: 1, paddingBottom: 12,
   },
-
-  // Toolbar
   toolbar: {
-    flexDirection: 'row',
-    gap: 4,
-    marginBottom: 12,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: C.border,
+    flexDirection: 'row', gap: 6, marginBottom: 16,
+    paddingBottom: 12, borderBottomWidth: 1,
   },
   toolBtn: {
-    flexDirection: 'column',
-    alignItems: 'center',
-    flex: 1,
-    paddingVertical: 6,
-    backgroundColor: C.card,
-    borderRadius: 8,
-    gap: 2,
+    flex: 1, alignItems: 'center', paddingVertical: 8,
+    borderRadius: 10, borderWidth: 1, gap: 3,
   },
-  toolLabel: { color: C.muted, fontSize: 9 },
-
-  // Body
-  bodyInput: {
-    color: C.text,
-    fontSize: 15,
-    lineHeight: 26,
-    minHeight: 220,
-  },
-
-  // Wikilink suggestions
-  suggestBox: {
-    backgroundColor: C.card,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: C.border,
-    maxHeight: 160,
-    marginTop: 4,
-    marginBottom: 8,
-  },
+  toolLabel: { fontSize: 9, fontWeight: '600' },
+  bodyInput: { fontSize: 15, lineHeight: 26, minHeight: 220 },
+  suggestBox: { borderRadius: 12, borderWidth: 1, maxHeight: 160, marginTop: 4, marginBottom: 8 },
   suggestItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    padding: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: C.border,
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    padding: 12, borderBottomWidth: 1,
   },
-  suggestText: { color: C.text, fontSize: 14 },
-
-  // Tags
+  suggestText: { fontSize: 14 },
   tagsSection: {
-    marginTop: 24,
-    backgroundColor: C.card,
-    borderRadius: 12,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: C.border,
+    marginTop: 24, borderRadius: 14, padding: 14, borderWidth: 1,
   },
-  tagsRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
-  tagsLabel: { color: C.muted, fontSize: 12, fontWeight: '600', textTransform: 'uppercase' },
-  tagChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
+  tagsHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 },
+  tagsLabel: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6 },
+  tagChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 },
   tagChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: C.accentDim,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 20,
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20,
   },
-  tagChipText: { color: C.accent, fontSize: 12, fontWeight: '600' },
-  quickTags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 },
-  quickTag: {
-    borderWidth: 1,
-    borderColor: C.border,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 20,
+  tagChipText: { fontSize: 12, fontWeight: '600' },
+  quickTags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 },
+  quickTag: { borderWidth: 1, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
+  quickTagText: { fontSize: 12 },
+  tagInputRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  tagInput: { flex: 1, fontSize: 13, borderRadius: 10, padding: 10, borderWidth: 1 },
+  tagAddBtn: { borderRadius: 10, padding: 10 },
+
+  // AI toolbar
+  aiBar: {
+    flexDirection: 'row', gap: 8, marginBottom: 12,
+    padding: 10, borderRadius: 14, borderWidth: 1,
   },
-  quickTagText: { color: C.muted, fontSize: 12 },
-  tagInputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 4,
+  aiBarLoading: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 4 },
+  aiBarLoadingText: { fontSize: 13, fontWeight: '600' },
+  aiBarBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 5, paddingVertical: 8, borderRadius: 10, borderWidth: 1,
   },
-  tagInput: {
-    flex: 1,
-    color: C.text,
-    fontSize: 13,
-    backgroundColor: '#111',
-    borderRadius: 8,
-    padding: 10,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  tagAddBtn: {
-    backgroundColor: C.accent,
-    borderRadius: 8,
-    padding: 10,
-  },
-  tagAddBtnDim: { opacity: 0.4 },
+  aiBarBtnAccent: {},
+  aiBarBtnText: { fontSize: 12, fontWeight: '700' },
 });
