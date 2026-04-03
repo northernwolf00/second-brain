@@ -14,9 +14,9 @@ export const SearchService = {
            n.title,
            n.body_preview,
            n.updated_at,
-           snippet(notes_fts, 1, '[', ']', '…', 12) as excerpt
+           snippet(notes_fts, 2, '[', ']', '…', 12) as excerpt
          FROM notes_fts
-         JOIN notes n ON n.id = notes_fts.rowid
+         JOIN notes n ON n.id = notes_fts.note_id
          WHERE notes_fts MATCH ?
            AND n.is_deleted = 0
          ORDER BY bm25(notes_fts)

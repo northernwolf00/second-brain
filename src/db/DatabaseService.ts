@@ -36,6 +36,22 @@ export const DatabaseService = {
       ? parseInt(result.rows[0].value as string, 10)
       : 0;
 
+    if (currentVersion < 2) {
+      // v2: rebuild FTS5 with note_id TEXT column — fixes UUID datatype mismatch on insert
+      db.executeSync(`DROP TABLE IF EXISTS notes_fts`);
+      db.executeSync(`DROP TRIGGER IF EXISTS notes_ai`);
+      db.executeSync(`DROP TRIGGER IF EXISTS notes_au`);
+      db.executeSync(`DROP TRIGGER IF EXISTS notes_ad`);
+      // SCHEMA_STATEMENTS[4] = FTS5 table, [5][6][7] = triggers
+      for (const sql of SCHEMA_STATEMENTS.slice(4, 8)) {
+        db.executeSync(sql);
+      }
+      // Backfill existing notes into the new FTS table
+      db.executeSync(
+        `INSERT INTO notes_fts(note_id, title, body) SELECT id, title, body FROM notes WHERE is_deleted = 0`,
+      );
+    }
+
     if (currentVersion < DB_VERSION) {
       db.executeSync(
         `INSERT OR REPLACE INTO db_meta (key, value) VALUES ('version', ?);`,

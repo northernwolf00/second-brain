@@ -25,6 +25,7 @@
 		761780EC2CA45674006654EE /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = SecondBrain/AppDelegate.swift; sourceTree = "<group>"; };
 		81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = SecondBrain/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
+		33DB67B2525D4CE2B12A995A /* SplashScreen.storyboard */ = {isa = PBXFileReference; name = "SplashScreen.storyboard"; path = "SecondBrain/SplashScreen.storyboard"; sourceTree = "<group>"; fileEncoding = undefined; lastKnownFileType = unknown; explicitFileType = undefined; includeInIndex = 0; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -47,6 +48,7 @@
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */,
 				13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */,
+				33DB67B2525D4CE2B12A995A /* SplashScreen.storyboard */,
 			);
 			name = SecondBrain;
 			sourceTree = "<group>";
@@ -112,6 +114,7 @@
 				00DD1BFF1BD5951E006B06BC /* Bundle React Native code and images */,
 				00EEFC60759A1932668264C0 /* [CP] Embed Pods Frameworks */,
 				E235C05ADACE081382539298 /* [CP] Copy Pods Resources */,
+				ECC581A3149948B58D34F026 /* [Expo Dev Launcher] Strip Local Network Keys for Release */,
 			);
 			buildRules = (
 			);
@@ -161,6 +164,7 @@
 				81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				D57A80622A85212BB89EC00C /* PrivacyInfo.xcprivacy in Resources */,
+				81CE0A9F3F3F467CB2949389 /* SplashScreen.storyboard in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -239,6 +243,54 @@
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-SecondBrain/Pods-SecondBrain-resources.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
+		ECC581A3149948B58D34F026 /* [Expo Dev Launcher] Strip Local Network Keys for Release */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			name = "[Expo Dev Launcher] Strip Local Network Keys for Release";
+			inputPaths = (
+			);
+			outputPaths = (
+			);
+			shellPath = /bin/sh;
+			shellScript = "# Strip dev-launcher-specific local network permission keys from non-Debug builds
+# This only removes _expo._tcp Bonjour services and the dev-launcher usage description.
+# Other Bonjour services and custom descriptions are preserved for production use.
+
+if [ \"$CONFIGURATION\" != \"Debug\" ]; then
+  PLIST_PATH=\"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"
+  if [ -f \"$PLIST_PATH\" ]; then
+    # Check if NSBonjourServices exists
+    if /usr/libexec/PlistBuddy -c \"Print :NSBonjourServices\" \"$PLIST_PATH\" >/dev/null 2>&1; then
+      # Get the count of services
+      COUNT=$(/usr/libexec/PlistBuddy -c \"Print :NSBonjourServices\" \"$PLIST_PATH\" 2>/dev/null | grep \"^    \" | wc -l | tr -d ' ')
+
+      # Remove _expo._tcp
+      for ((i=COUNT-1; i>=0; i--)); do
+        SERVICE=$(/usr/libexec/PlistBuddy -c \"Print :NSBonjourServices:$i\" \"$PLIST_PATH\" 2>/dev/null || echo \"\")
+        if echo \"$SERVICE\" | grep -q \"_expo._tcp\"; then
+          /usr/libexec/PlistBuddy -c \"Delete :NSBonjourServices:$i\" \"$PLIST_PATH\" 2>/dev/null || true
+        fi
+      done
+
+      # If the array is now empty, remove it entirely
+      REMAINING=$(/usr/libexec/PlistBuddy -c \"Print :NSBonjourServices\" \"$PLIST_PATH\" 2>/dev/null | grep \"^    \" | wc -l | tr -d ' ')
+      if [ \"$REMAINING\" -eq \"0\" ]; then
+        /usr/libexec/PlistBuddy -c \"Delete :NSBonjourServices\" \"$PLIST_PATH\" 2>/dev/null || true
+      fi
+    fi
+
+    # Only delete the description if it matches the dev-launcher default text
+    DESC=$(/usr/libexec/PlistBuddy -c \"Print :NSLocalNetworkUsageDescription\" \"$PLIST_PATH\" 2>/dev/null || echo \"\")
+    if echo \"$DESC\" | grep -q \"Expo Dev Launcher\"; then
+      /usr/libexec/PlistBuddy -c \"Delete :NSLocalNetworkUsageDescription\" \"$PLIST_PATH\" 2>/dev/null || true
+    fi
+  fi
+fi
+";
+		};
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -273,13 +325,14 @@
 					"-ObjC",
 					"-lc++",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "org.reactjs.native.example.$(PRODUCT_NAME:rfc1034identifier)";
-				PRODUCT_NAME = SecondBrain;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.googadev.secondbrainapp";
+				PRODUCT_NAME = "SecondBrain";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				VERSIONING_SYSTEM = "apple-generic";
+				CODE_SIGN_ENTITLEMENTS = SecondBrain/SecondBrain.entitlements;
 			};
 			name = Debug;
 		};
@@ -302,12 +355,13 @@
 					"-ObjC",
 					"-lc++",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "org.reactjs.native.example.$(PRODUCT_NAME:rfc1034identifier)";
-				PRODUCT_NAME = SecondBrain;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.googadev.secondbrainapp";
+				PRODUCT_NAME = "SecondBrain";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				VERSIONING_SYSTEM = "apple-generic";
+				CODE_SIGN_ENTITLEMENTS = SecondBrain/SecondBrain.entitlements;
 			};
 			name = Release;
 		};

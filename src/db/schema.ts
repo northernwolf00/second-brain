@@ -31,25 +31,25 @@ export const SCHEMA_STATEMENTS: string[] = [
     PRIMARY KEY (note_id, tag_id)
   )`,
 
+  // Standalone FTS5 — note_id is UNINDEXED text (UUID), avoids rowid integer requirement
   `CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
+    note_id UNINDEXED,
     title,
     body,
-    content=notes,
-    content_rowid=id,
     tokenize='unicode61'
   )`,
 
   `CREATE TRIGGER IF NOT EXISTS notes_ai AFTER INSERT ON notes BEGIN
-    INSERT INTO notes_fts(rowid, title, body) VALUES (new.id, new.title, new.body);
+    INSERT INTO notes_fts(note_id, title, body) VALUES (new.id, new.title, new.body);
   END`,
 
   `CREATE TRIGGER IF NOT EXISTS notes_au AFTER UPDATE ON notes BEGIN
-    INSERT INTO notes_fts(notes_fts, rowid, title, body) VALUES('delete', old.id, old.title, old.body);
-    INSERT INTO notes_fts(rowid, title, body) VALUES (new.id, new.title, new.body);
+    DELETE FROM notes_fts WHERE note_id = old.id;
+    INSERT INTO notes_fts(note_id, title, body) VALUES (new.id, new.title, new.body);
   END`,
 
   `CREATE TRIGGER IF NOT EXISTS notes_ad AFTER DELETE ON notes BEGIN
-    INSERT INTO notes_fts(notes_fts, rowid, title, body) VALUES('delete', old.id, old.title, old.body);
+    DELETE FROM notes_fts WHERE note_id = old.id;
   END`,
 
   `CREATE TABLE IF NOT EXISTS sync_log (
@@ -65,4 +65,4 @@ export const SCHEMA_STATEMENTS: string[] = [
   `CREATE INDEX IF NOT EXISTS idx_links_target   ON links(target_id)`,
 ];
 
-export const DB_VERSION = 1;
+export const DB_VERSION = 2;

@@ -1,23 +1,42 @@
-import { createMMKV } from 'react-native-mmkv';
+// Falls back to in-memory storage when native SecureStore isn't available (e.g. Expo Go).
+const mem = new Map<string, string>();
 
-export const storage = createMMKV();
+async function getItem(key: string): Promise<string | null> {
+  try {
+    const SecureStore = require('expo-secure-store');
+    return await SecureStore.getItemAsync(key);
+  } catch {
+    return mem.get(key) ?? null;
+  }
+}
+
+async function setItem(key: string, value: string): Promise<void> {
+  try {
+    const SecureStore = require('expo-secure-store');
+    await SecureStore.setItemAsync(key, value);
+  } catch {
+    mem.set(key, value);
+  }
+}
 
 export const Store = {
-  getLastOpenedNoteId: () => storage.getString('lastOpenedNoteId'),
-  setLastOpenedNoteId: (id: string) => storage.set('lastOpenedNoteId', id),
+  getLastOpenedNoteId: () => getItem('lastOpenedNoteId'),
+  setLastOpenedNoteId: (id: string) => setItem('lastOpenedNoteId', id),
 
-  getTheme: () => storage.getString('theme') ?? 'dark',
-  setTheme: (t: string) => storage.set('theme', t),
+  getTheme: () => getItem('theme'),
+  setTheme: (t: string) => setItem('theme', t),
 
-  // All features are free — always returns true
   isProUser: () => true,
 
-  getSyncPassphrase: () => storage.getString('syncPassphrase'),
-  setSyncPassphrase: (p: string) => storage.set('syncPassphrase', p),
+  getSyncPassphrase: () => getItem('syncPassphrase'),
+  setSyncPassphrase: (p: string) => setItem('syncPassphrase', p),
 
-  getLastSyncAt: () => storage.getNumber('lastSyncAt'),
-  setLastSyncAt: (ts: number) => storage.set('lastSyncAt', ts),
+  getLastSyncAt: async () => {
+    const val = await getItem('lastSyncAt');
+    return val ? Number(val) : null;
+  },
+  setLastSyncAt: (ts: number) => setItem('lastSyncAt', String(ts)),
 
-  getResurfaceNoteId: () => storage.getString('resurfaceNoteId'),
-  setResurfaceNoteId: (id: string) => storage.set('resurfaceNoteId', id),
+  getResurfaceNoteId: () => getItem('resurfaceNoteId'),
+  setResurfaceNoteId: (id: string) => setItem('resurfaceNoteId', id),
 };

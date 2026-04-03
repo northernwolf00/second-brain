@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { DatabaseService } from './src/db/DatabaseService';
@@ -46,6 +47,7 @@ export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
+        <StatusBar style="light" backgroundColor="#0f0f0f" />
         <RootNavigator />
       </SafeAreaProvider>
     </GestureHandlerRootView>

@@ -33,12 +33,14 @@ function Row({ label, value, onPress, destructive }: { label: string; value?: st
 }
 
 export function SettingsScreen() {
-  const [passphrase, setPassphrase] = useState(Store.getSyncPassphrase() ?? '');
+  const [passphrase, setPassphrase] = useState('');
   const [syncing, setSyncing] = useState(false);
   const [backupInfo, setBackupInfo] = useState<{ exists: boolean; size: number; mtime: Date | null } | null>(null);
-  const lastSync = Store.getLastSyncAt();
+  const [lastSync, setLastSync] = useState<number | null>(null);
 
   useEffect(() => {
+    Store.getSyncPassphrase().then(p => setPassphrase(p ?? ''));
+    Store.getLastSyncAt().then(setLastSync);
     SyncService.getBackupInfo().then(setBackupInfo);
   }, []);
 
@@ -50,8 +52,9 @@ export function SettingsScreen() {
     setSyncing(true);
     try {
       await SyncService.exportEncrypted(passphrase.trim());
-      Store.setSyncPassphrase(passphrase.trim());
-      Store.setLastSyncAt(Date.now());
+      await Store.setSyncPassphrase(passphrase.trim());
+      await Store.setLastSyncAt(Date.now());
+      setLastSync(Date.now());
       const info = await SyncService.getBackupInfo();
       setBackupInfo(info);
       Alert.alert('Backup saved', `Saved to ${SyncService.backupPath()}\n\nEnable iCloud Drive sync in iOS Settings to sync automatically.`);

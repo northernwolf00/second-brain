@@ -11,16 +11,16 @@ export function DailyResurfaceScreen() {
   const [resurfaceNote, setResurfaceNote] = useState<{ id: string; title: string } | null>(null);
 
   useEffect(() => {
-    const cachedId = Store.getResurfaceNoteId();
-    if (cachedId) {
-      // Already picked for today — use cached
-      setResurfaceNote({ id: cachedId, title: '' });
-    }
-    SearchService.getRandomOldNote(30).then(note => {
-      if (note) {
-        setResurfaceNote(note);
-        Store.setResurfaceNoteId(note.id);
+    Store.getResurfaceNoteId().then(cachedId => {
+      if (cachedId) {
+        setResurfaceNote({ id: cachedId, title: '' });
       }
+      SearchService.getRandomOldNote(30).then(note => {
+        if (note) {
+          setResurfaceNote(note);
+          Store.setResurfaceNoteId(note.id);
+        }
+      });
     });
   }, []);
 
