@@ -1,10 +1,17 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   View, Text, TextInput, StyleSheet, TouchableOpacity,
   KeyboardAvoidingView, Platform, ScrollView, FlatList,
-  Alert, ActivityIndicator, NativeSyntheticEvent, TextInputSelectionChangeEventData,
+  Alert, ActivityIndicator, Modal, Pressable,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import {
+  RichText,
+  useEditorBridge,
+  useBridgeState,
+  useEditorContent,
+  TenTapStartKit,
+} from '@10play/tentap-editor';
 import { NoteService } from '../services/NoteService';
 import { AIService } from '../services/AIService';
 import { Note } from '../types';
@@ -13,14 +20,65 @@ import { useTheme } from '../theme';
 
 const QUICK_TAGS = ['idea', 'todo', 'journal', 'research', 'book', 'meeting', 'quote'];
 
-type Selection = { start: number; end: number };
+/** CSS injected into the TipTap WebView to match the app theme */
+function buildEditorCSS(bg: string, text: string, textSecondary: string, muted: string, accent: string, isDark: boolean) {
+  const codeBg = isDark ? '#21262d' : '#e8e0d0';
+  const codeColor = isDark ? '#f97583' : '#c0392b';
+  return `
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { background-color: ${bg} !important; }
+    body, .ProseMirror {
+      background-color: ${bg} !important;
+      color: ${text} !important;
+      font-size: 16px;
+      line-height: 1.8;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      caret-color: ${accent};
+      word-break: break-word;
+      padding: 2px;
+    }
+    .ProseMirror:focus { outline: none; }
+    .ProseMirror p.is-editor-empty:first-child::before {
+      content: attr(data-placeholder);
+      color: ${muted};
+      pointer-events: none;
+      position: absolute;
+    }
+    strong, b { font-weight: 700; }
+    em, i { font-style: italic; color: ${textSecondary}; }
+    u { text-decoration: underline; }
+    s { text-decoration: line-through; color: ${muted}; }
+    code {
+      background-color: ${codeBg};
+      color: ${codeColor};
+      border-radius: 4px;
+      padding: 1px 6px;
+      font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+      font-size: 14px;
+    }
+    blockquote {
+      border-left: 3px solid ${accent};
+      padding-left: 14px;
+      margin: 4px 0;
+      color: ${textSecondary};
+      font-style: italic;
+    }
+    h1 { font-size: 1.7em; font-weight: 800; margin: 10px 0 6px; color: ${text}; }
+    h2 { font-size: 1.4em; font-weight: 700; margin: 10px 0 4px; color: ${text}; }
+    h3 { font-size: 1.15em; font-weight: 600; margin: 8px 0 4px; color: ${text}; }
+    ul, ol { padding-left: 22px; margin: 4px 0; }
+    li { margin-bottom: 3px; line-height: 1.7; }
+    p { margin-bottom: 6px; }
+    a { color: ${accent}; text-decoration: underline; }
+    hr { border-color: ${muted}; opacity: 0.3; margin: 12px 0; }
+  `;
+}
 
 export function AddNoteScreen() {
   const navigation = useNavigation<any>();
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
 
   const [title, setTitle] = useState('');
-  const [body, setBody] = useState('');
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState('');
   const [suggestions, setSuggestions] = useState<Note[]>([]);
@@ -28,95 +86,51 @@ export function AddNoteScreen() {
   const [saving, setSaving] = useState(false);
   const [aiWorking, setAiWorking] = useState(false);
 
-  // Track cursor / selection in body editor
-  const selectionRef = useRef<Selection>({ start: 0, end: 0 });
-  const bodyRef = useRef<TextInput>(null);
+  // Link modal
+  const [showLinkModal, setShowLinkModal] = useState(false);
+  const [linkInput, setLinkInput] = useState('');
 
-  const handleSelectionChange = useCallback(
-    (e: NativeSyntheticEvent<TextInputSelectionChangeEventData>) => {
-      selectionRef.current = e.nativeEvent.selection;
-    },
-    [],
-  );
+  // ── Rich text editor ────────────────────────────────────────────────────────
+  // TenTapStartKit already includes Bold, Italic, Heading, BulletList, Blockquote,
+  // Code, Underline, Link, History, PlaceholderBridge, and more.
+  const editor = useEditorBridge({
+    autofocus: false,
+    avoidIosKeyboard: true,
+    bridgeExtensions: TenTapStartKit,
+    dynamicHeight: true,
+  });
 
-  // ── Formatting helpers ──────────────────────────────────────────────────────
+  const editorState = useBridgeState(editor);
+  // HTML content – used for saving and wikilink detection
+  const htmlContent = useEditorContent(editor, { type: 'html', debounceInterval: 200 });
 
-  const applyFormat = useCallback(
-    (type: 'bold' | 'italic' | 'link' | 'list' | 'heading' | 'quote' | 'code') => {
-      const { start, end } = selectionRef.current;
-      const selected = body.slice(start, end);
+  // Plain text derived from HTML (strip tags)
+  const plainText = (htmlContent ?? '')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .trim();
 
-      let newBody = body;
+  const wordCount = plainText ? plainText.split(/\s+/).filter(Boolean).length : 0;
 
-      switch (type) {
-        case 'bold':
-          if (selected) {
-            newBody = body.slice(0, start) + `**${selected}**` + body.slice(end);
-          } else {
-            newBody = body.slice(0, start) + '**bold**' + body.slice(end);
-          }
-          break;
-
-        case 'italic':
-          if (selected) {
-            newBody = body.slice(0, start) + `_${selected}_` + body.slice(end);
-          } else {
-            newBody = body.slice(0, start) + '_italic_' + body.slice(end);
-          }
-          break;
-
-        case 'link':
-          if (selected) {
-            newBody = body.slice(0, start) + `[[${selected}]]` + body.slice(end);
-          } else {
-            newBody = body.slice(0, start) + '[[' + body.slice(end);
-          }
-          break;
-
-        case 'list': {
-          const lineStart = body.lastIndexOf('\n', start - 1) + 1;
-          const prefix = body.slice(lineStart).startsWith('- ') ? '' : '- ';
-          newBody = body.slice(0, lineStart) + prefix + body.slice(lineStart);
-          break;
-        }
-
-        case 'heading': {
-          const lineStart = body.lastIndexOf('\n', start - 1) + 1;
-          const prefix = body.slice(lineStart).startsWith('## ') ? '' : '## ';
-          newBody = body.slice(0, lineStart) + prefix + body.slice(lineStart);
-          break;
-        }
-
-        case 'quote': {
-          const lineStart = body.lastIndexOf('\n', start - 1) + 1;
-          const prefix = body.slice(lineStart).startsWith('> ') ? '' : '> ';
-          newBody = body.slice(0, lineStart) + prefix + body.slice(lineStart);
-          break;
-        }
-
-        case 'code':
-          if (selected) {
-            newBody = body.slice(0, start) + `\`${selected}\`` + body.slice(end);
-          } else {
-            newBody = body.slice(0, start) + '`code`' + body.slice(end);
-          }
-          break;
-      }
-
-      setBody(newBody);
-      // Keep focus on body editor
-      setTimeout(() => bodyRef.current?.focus(), 50);
-    },
-    [body],
-  );
+  // ── Inject theme CSS when editor becomes ready ──────────────────────────────
+  useEffect(() => {
+    if (!editorState.isReady) return;
+    editor.injectCSS(
+      buildEditorCSS(colors.bg, colors.text, colors.textSecondary, colors.muted, colors.accent, isDark),
+      'app-theme',
+    );
+    editor.setPlaceholder('Start writing…\n\nTip: type [[ to link to another note');
+  }, [editorState.isReady, isDark]); // re-inject on theme toggle
 
   // ── Wikilink autocomplete ───────────────────────────────────────────────────
-
-  const handleBodyChange = useCallback((text: string) => {
-    setBody(text);
-    const lastAt = text.lastIndexOf('[[');
+  useEffect(() => {
+    if (!plainText) { setShowSuggestions(false); return; }
+    const lastAt = plainText.lastIndexOf('[[');
     if (lastAt >= 0) {
-      const query = text.slice(lastAt + 2);
+      const query = plainText.slice(lastAt + 2);
       if (!query.includes(']]') && query.length >= 1) {
         NoteService.searchTitles(query).then(res => {
           setSuggestions(res);
@@ -126,53 +140,57 @@ export function AddNoteScreen() {
       }
     }
     setShowSuggestions(false);
-  }, []);
+  }, [plainText]);
 
-  const insertWikilink = useCallback(
-    (targetTitle: string) => {
-      const lastAt = body.lastIndexOf('[[');
-      setBody(body.slice(0, lastAt) + `[[${targetTitle}]]`);
-      setShowSuggestions(false);
-    },
-    [body],
-  );
+  const insertWikilink = useCallback(async (targetTitle: string) => {
+    // Get the current HTML, find [[ and replace with [[title]]
+    const html = await editor.getHTML();
+    const lastAt = html.lastIndexOf('[[');
+    if (lastAt >= 0) {
+      const after = html.slice(lastAt + 2);
+      // end of query = first '<' or '>>' or ']]'
+      const endIdx = after.search(/[<>]|\]\]/);
+      const newHtml =
+        html.slice(0, lastAt) +
+        `[[${targetTitle}]]` +
+        (endIdx >= 0 ? after.slice(endIdx) : '');
+      editor.setContent(newHtml);
+    }
+    setShowSuggestions(false);
+  }, [editor]);
 
   // ── Tags ────────────────────────────────────────────────────────────────────
-
-  const addTag = useCallback(
-    (tag: string) => {
-      const clean = tag.trim().toLowerCase().replace(/\s+/g, '-');
-      if (!clean || tags.includes(clean)) return;
-      setTags(prev => [...prev, clean]);
-      setTagInput('');
-    },
-    [tags],
-  );
+  const addTag = useCallback((tag: string) => {
+    const clean = tag.trim().toLowerCase().replace(/\s+/g, '-');
+    if (!clean || tags.includes(clean)) return;
+    setTags(prev => [...prev, clean]);
+    setTagInput('');
+  }, [tags]);
 
   const removeTag = useCallback((tag: string) => {
     setTags(prev => prev.filter(t => t !== tag));
   }, []);
 
   // ── Save / Discard ──────────────────────────────────────────────────────────
-
   const handleSave = useCallback(async () => {
-    if (!title.trim() && !body.trim()) {
+    if (!title.trim() && !plainText) {
       Alert.alert('Empty note', 'Add a title or some content before saving.');
       return;
     }
     setSaving(true);
     try {
-      const note = await NoteService.createNote(title.trim() || 'Untitled', body.trim());
+      const bodyHtml = htmlContent ?? '';
+      const note = await NoteService.createNote(title.trim() || 'Untitled', bodyHtml);
       navigation.replace('Editor', { noteId: note.id });
     } catch (e) {
       Alert.alert('Save failed', String(e instanceof Error ? e.message : e));
     } finally {
       setSaving(false);
     }
-  }, [title, body, navigation]);
+  }, [title, htmlContent, plainText, navigation]);
 
   const handleDiscard = useCallback(() => {
-    if (title || body) {
+    if (title || plainText) {
       Alert.alert('Discard note?', 'Your unsaved content will be lost.', [
         { text: 'Keep editing', style: 'cancel' },
         { text: 'Discard', style: 'destructive', onPress: () => navigation.goBack() },
@@ -180,50 +198,104 @@ export function AddNoteScreen() {
     } else {
       navigation.goBack();
     }
-  }, [title, body, navigation]);
+  }, [title, plainText, navigation]);
 
   // ── AI ──────────────────────────────────────────────────────────────────────
-
   const handleAIImprove = useCallback(async () => {
-    if (!body.trim()) return;
+    if (!plainText) return;
     setAiWorking(true);
-    const improved = await AIService.improveText(body);
-    if (improved) setBody(improved);
+    const improved = await AIService.improveText(plainText);
+    if (improved) editor.setContent(improved);
     setAiWorking(false);
-  }, [body]);
+  }, [editor, plainText]);
 
   const handleAIExpand = useCallback(async () => {
-    if (!body.trim()) return;
+    if (!plainText) return;
     setAiWorking(true);
-    const expanded = await AIService.expandIdea(body);
-    if (expanded) setBody(expanded);
+    const expanded = await AIService.expandIdea(plainText);
+    if (expanded) editor.setContent(expanded);
     setAiWorking(false);
-  }, [body]);
+  }, [editor, plainText]);
 
   const handleAIChat = useCallback(() => {
     navigation.navigate('AIAssistant', {
-      text: body,
-      prompt: body.trim()
-        ? `I'm writing a note titled "${title || 'Untitled'}". Here's what I have:\n\n${body}\n\nHelp me continue or improve it.`
+      text: plainText,
+      prompt: plainText
+        ? `I'm writing a note titled "${title || 'Untitled'}". Here's what I have:\n\n${plainText}\n\nHelp me continue or improve it.`
         : '',
     });
-  }, [navigation, title, body]);
+  }, [navigation, title, plainText]);
 
-  // ── Word count ──────────────────────────────────────────────────────────────
-  const wordCount = body.trim() ? body.trim().split(/\s+/).length : 0;
-  const charCount = body.length;
+  // ── Link handling ───────────────────────────────────────────────────────────
+  const handleLinkPress = useCallback(() => {
+    if (editorState.isLinkActive) {
+      // Toggle off existing link
+      editor.setLink(null);
+      return;
+    }
+    // Pre-fill with existing link if any
+    setLinkInput(editorState.activeLink ?? '');
+    setShowLinkModal(true);
+  }, [editor, editorState.isLinkActive, editorState.activeLink]);
 
-  // ── Toolbar items ───────────────────────────────────────────────────────────
-  // IMPORTANT: Material Icons use underscores, not hyphens
+  const confirmLink = useCallback(() => {
+    const url = linkInput.trim();
+    if (url) {
+      // If it looks like a URL, use as-is; otherwise treat as wikilink
+      const href = /^https?:\/\//.test(url) ? url : `#wiki:${url}`;
+      editor.setLink(href);
+    }
+    setShowLinkModal(false);
+    setLinkInput('');
+  }, [editor, linkInput]);
+
+  // ── Toolbar config ──────────────────────────────────────────────────────────
+  // All actions use the tentap bridge (postMessage) — they work on selected text.
+  // The bridge sends commands to the TipTap editor in the WebView.
   const TOOLBAR = [
-    { icon: 'link',                 label: 'Link',   type: 'link'    as const },
-    { icon: 'format_bold',          label: 'Bold',   type: 'bold'    as const },
-    { icon: 'format_italic',        label: 'Italic', type: 'italic'  as const },
-    { icon: 'format_list_bulleted', label: 'List',   type: 'list'    as const },
-    { icon: 'title',                label: 'H2',     type: 'heading' as const },
-    { icon: 'format_quote',         label: 'Quote',  type: 'quote'   as const },
-    { icon: 'code',                 label: 'Code',   type: 'code'    as const },
-  ] as const;
+    {
+      icon: 'format_bold' as const,
+      label: 'Bold',
+      active: editorState.isBoldActive,
+      action: () => editor.toggleBold(),
+    },
+    {
+      icon: 'format_italic' as const,
+      label: 'Italic',
+      active: editorState.isItalicActive,
+      action: () => editor.toggleItalic(),
+    },
+    {
+      icon: 'title' as const,
+      label: 'H2',
+      active: editorState.headingLevel === 2,
+      action: () => editor.toggleHeading(2),
+    },
+    {
+      icon: 'format_list_bulleted' as const,
+      label: 'List',
+      active: editorState.isBulletListActive,
+      action: () => editor.toggleBulletList(),
+    },
+    {
+      icon: 'format_quote' as const,
+      label: 'Quote',
+      active: editorState.isBlockquoteActive,
+      action: () => editor.toggleBlockquote(),
+    },
+    {
+      icon: 'code' as const,
+      label: 'Code',
+      active: editorState.isCodeActive,
+      action: () => editor.toggleCode(),
+    },
+    {
+      icon: 'link' as const,
+      label: 'Link',
+      active: editorState.isLinkActive,
+      action: handleLinkPress,
+    },
+  ];
 
   return (
     <KeyboardAvoidingView
@@ -241,6 +313,10 @@ export function AddNoteScreen() {
 
         <Text style={[styles.headerTitle, { color: colors.text }]}>New note</Text>
 
+        {wordCount > 0 && (
+          <Text style={[styles.wordCount, { color: colors.muted }]}>{wordCount}w</Text>
+        )}
+
         <TouchableOpacity
           onPress={handleSave}
           style={[styles.saveBtn, { backgroundColor: saving ? colors.accentDim : colors.accent }]}
@@ -253,11 +329,66 @@ export function AddNoteScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* ── Formatting toolbar ── */}
+      <View style={[styles.toolbarWrapper, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.toolbarContent}>
+
+          {TOOLBAR.map(({ icon, label, active, action }) => (
+            <TouchableOpacity
+              key={label}
+              style={[
+                styles.toolBtn,
+                {
+                  backgroundColor: active ? colors.accentSoft : colors.card,
+                  borderColor: active ? colors.accent : colors.border,
+                },
+              ]}
+              onPress={action}
+              activeOpacity={0.7}>
+              <Icon
+                name={icon}
+                size={18}
+                color={active ? colors.accent : colors.textSecondary}
+              />
+              <Text style={[styles.toolLabel, { color: active ? colors.accent : colors.muted }]}>
+                {label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+
+          {/* Divider */}
+          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+
+          {/* Undo */}
+          <TouchableOpacity
+            style={[styles.historyBtn, { borderColor: colors.border, backgroundColor: colors.card, opacity: editorState.canUndo ? 1 : 0.35 }]}
+            onPress={() => editor.undo()}
+            disabled={!editorState.canUndo}
+            activeOpacity={0.7}>
+            <Icon name="undo" size={18} color={colors.textSecondary} />
+          </TouchableOpacity>
+
+          {/* Redo */}
+          <TouchableOpacity
+            style={[styles.historyBtn, { borderColor: colors.border, backgroundColor: colors.card, opacity: editorState.canRedo ? 1 : 0.35 }]}
+            onPress={() => editor.redo()}
+            disabled={!editorState.canRedo}
+            activeOpacity={0.7}>
+            <Icon name="redo" size={18} color={colors.textSecondary} />
+          </TouchableOpacity>
+
+        </ScrollView>
+      </View>
+
       <ScrollView
         style={styles.scroll}
         keyboardDismissMode="interactive"
         contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}>
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled">
 
         {/* ── Title ── */}
         <TextInput
@@ -267,53 +398,20 @@ export function AddNoteScreen() {
           placeholder="Title"
           placeholderTextColor={colors.muted}
           returnKeyType="next"
-          onSubmitEditing={() => bodyRef.current?.focus()}
+          onSubmitEditing={() => editor.focus('end')}
           blurOnSubmit={false}
           autoFocus
           maxLength={200}
         />
 
-        {/* ── Formatting toolbar ── */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={[styles.toolbarScroll, { borderBottomColor: colors.border }]}
-          contentContainerStyle={styles.toolbarContent}>
-          {TOOLBAR.map(({ icon, label, type }) => (
-            <TouchableOpacity
-              key={label}
-              style={[styles.toolBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
-              onPress={() => applyFormat(type)}
-              activeOpacity={0.7}>
-              <Icon name={icon} size={18} color={colors.accent} />
-              <Text style={[styles.toolLabel, { color: colors.muted }]}>{label}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-
-        {/* ── Body ── */}
-        <TextInput
-          ref={bodyRef}
-          style={[styles.bodyInput, { color: colors.text }]}
-          value={body}
-          onChangeText={handleBodyChange}
-          onSelectionChange={handleSelectionChange}
-          placeholder={'Start writing…\n\nTip: type [[ to link to another note'}
-          placeholderTextColor={colors.muted}
-          multiline
-          textAlignVertical="top"
-          scrollEnabled={false}
-          autoCapitalize="sentences"
-        />
-
-        {/* ── Word / char count ── */}
-        {body.length > 0 && (
-          <View style={styles.statsRow}>
-            <Text style={[styles.statsText, { color: colors.muted }]}>
-              {wordCount} {wordCount === 1 ? 'word' : 'words'}  ·  {charCount} chars
-            </Text>
-          </View>
-        )}
+        {/* ── Rich text body editor ── */}
+        <View style={[styles.editorWrap, { backgroundColor: colors.bg }]}>
+          <RichText
+            editor={editor}
+            scrollEnabled={false}
+            style={{ backgroundColor: colors.bg, minHeight: 220 }}
+          />
+        </View>
 
         {/* ── Wikilink autocomplete ── */}
         {showSuggestions && (
@@ -322,6 +420,7 @@ export function AddNoteScreen() {
               data={suggestions}
               keyExtractor={n => n.id}
               keyboardShouldPersistTaps="always"
+              scrollEnabled={false}
               renderItem={({ item }) => (
                 <TouchableOpacity
                   style={[styles.suggestItem, { borderBottomColor: colors.border }]}
@@ -334,8 +433,8 @@ export function AddNoteScreen() {
           </View>
         )}
 
-        {/* ── AI toolbar ── */}
-        {body.length > 20 && (
+        {/* ── AI bar ── */}
+        {plainText.length > 20 && (
           <View style={[styles.aiBar, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <View style={styles.aiBarHeader}>
               <Icon name="auto_awesome" size={14} color={colors.accent} />
@@ -350,22 +449,19 @@ export function AddNoteScreen() {
               <View style={styles.aiBarBtns}>
                 <TouchableOpacity
                   style={[styles.aiBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
-                  onPress={handleAIImprove}
-                  activeOpacity={0.75}>
+                  onPress={handleAIImprove} activeOpacity={0.75}>
                   <Icon name="auto_fix_high" size={15} color={colors.accent} />
                   <Text style={[styles.aiBtnText, { color: colors.text }]}>Improve</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.aiBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
-                  onPress={handleAIExpand}
-                  activeOpacity={0.75}>
+                  onPress={handleAIExpand} activeOpacity={0.75}>
                   <Icon name="expand" size={15} color={colors.accent} />
                   <Text style={[styles.aiBtnText, { color: colors.text }]}>Expand</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.aiBtn, styles.aiBtnPrimary, { backgroundColor: colors.accentSoft, borderColor: colors.accentDim }]}
-                  onPress={handleAIChat}
-                  activeOpacity={0.75}>
+                  style={[styles.aiBtn, { backgroundColor: colors.accentSoft, borderColor: colors.accentDim }]}
+                  onPress={handleAIChat} activeOpacity={0.75}>
                   <Icon name="chat" size={15} color={colors.accent} />
                   <Text style={[styles.aiBtnText, { color: colors.accent }]}>Ask AI</Text>
                 </TouchableOpacity>
@@ -387,8 +483,7 @@ export function AddNoteScreen() {
                 <TouchableOpacity
                   key={tag}
                   style={[styles.tagChip, { backgroundColor: colors.accentSoft, borderColor: colors.accentDim }]}
-                  onPress={() => removeTag(tag)}
-                  activeOpacity={0.7}>
+                  onPress={() => removeTag(tag)} activeOpacity={0.7}>
                   <Text style={[styles.tagChipText, { color: colors.accent }]}>#{tag}</Text>
                   <Icon name="close" size={11} color={colors.accent} />
                 </TouchableOpacity>
@@ -396,21 +491,18 @@ export function AddNoteScreen() {
             </View>
           )}
 
-          {/* Quick tags */}
           <View style={styles.quickTags}>
             {QUICK_TAGS.filter(t => !tags.includes(t)).map(tag => (
               <TouchableOpacity
                 key={tag}
                 style={[styles.quickTag, { borderColor: colors.border, backgroundColor: colors.surface }]}
-                onPress={() => addTag(tag)}
-                activeOpacity={0.7}>
+                onPress={() => addTag(tag)} activeOpacity={0.7}>
                 <Icon name="add" size={12} color={colors.muted} />
                 <Text style={[styles.quickTagText, { color: colors.textSecondary }]}>{tag}</Text>
               </TouchableOpacity>
             ))}
           </View>
 
-          {/* Custom tag input */}
           <View style={styles.tagInputRow}>
             <TextInput
               style={[styles.tagInput, { color: colors.text, backgroundColor: colors.inputBg, borderColor: colors.border }]}
@@ -423,16 +515,70 @@ export function AddNoteScreen() {
               blurOnSubmit={false}
             />
             <TouchableOpacity
-              style={[styles.tagAddBtn, { backgroundColor: tagInput.trim() ? colors.accent : colors.card, borderColor: colors.border }]}
+              style={[styles.tagAddBtn, {
+                backgroundColor: tagInput.trim() ? colors.accent : colors.card,
+                borderColor: colors.border,
+              }]}
               onPress={() => addTag(tagInput)}
-              disabled={!tagInput.trim()}
-              activeOpacity={0.8}>
+              disabled={!tagInput.trim()} activeOpacity={0.8}>
               <Icon name="add" size={18} color={tagInput.trim() ? '#fff' : colors.muted} />
             </TouchableOpacity>
           </View>
         </View>
 
       </ScrollView>
+
+      {/* ── Link input modal ── */}
+      <Modal
+        visible={showLinkModal}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => setShowLinkModal(false)}>
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setShowLinkModal(false)}>
+          <Pressable
+            style={[styles.linkModal, { backgroundColor: colors.card, borderColor: colors.border }]}
+            onPress={() => {}}>
+            <Text style={[styles.linkModalTitle, { color: colors.text }]}>Insert Link</Text>
+            <Text style={[styles.linkModalHint, { color: colors.muted }]}>
+              Paste a URL  ·  or type a note title to create a wikilink
+            </Text>
+
+            <TextInput
+              style={[styles.linkModalInput, { color: colors.text, backgroundColor: colors.inputBg, borderColor: colors.border }]}
+              value={linkInput}
+              onChangeText={setLinkInput}
+              placeholder="https://… or note title"
+              placeholderTextColor={colors.muted}
+              autoFocus
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="done"
+              onSubmitEditing={confirmLink}
+            />
+
+            <View style={styles.linkModalBtns}>
+              <TouchableOpacity
+                style={[styles.linkModalBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                onPress={() => { setShowLinkModal(false); setLinkInput(''); }}
+                activeOpacity={0.8}>
+                <Text style={[styles.linkModalBtnText, { color: colors.textSecondary }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.linkModalBtn, styles.linkModalBtnPrimary, { backgroundColor: colors.accent, borderColor: colors.accent, opacity: linkInput.trim() ? 1 : 0.5 }]}
+                onPress={confirmLink}
+                disabled={!linkInput.trim()}
+                activeOpacity={0.8}>
+                <Icon name="link" size={15} color="#fff" />
+                <Text style={[styles.linkModalBtnText, { color: '#fff' }]}>Insert</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
     </KeyboardAvoidingView>
   );
 }
@@ -442,41 +588,40 @@ const styles = StyleSheet.create({
 
   // Header
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 16, paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    gap: 12,
+    gap: 10,
   },
   iconBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 36, height: 36, borderRadius: 10,
+    alignItems: 'center', justifyContent: 'center',
   },
-  headerTitle: {
-    flex: 1,
-    fontSize: 17,
-    fontWeight: '700',
-    letterSpacing: -0.3,
-  },
+  headerTitle: { flex: 1, fontSize: 17, fontWeight: '700', letterSpacing: -0.3 },
+  wordCount: { fontSize: 12, fontWeight: '600', letterSpacing: 0.2 },
   saveBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 16,
-    paddingVertical: 9,
-    borderRadius: 12,
-    minWidth: 80,
-    justifyContent: 'center',
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 16, paddingVertical: 9,
+    borderRadius: 12, minWidth: 82, justifyContent: 'center',
   },
-  saveBtnText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '700',
-    letterSpacing: -0.2,
+  saveBtnText: { color: '#fff', fontSize: 14, fontWeight: '700', letterSpacing: -0.2 },
+
+  // Toolbar
+  toolbarWrapper: { borderBottomWidth: StyleSheet.hairlineWidth },
+  toolbarContent: {
+    flexDirection: 'row', paddingHorizontal: 12,
+    paddingVertical: 9, gap: 7, alignItems: 'center',
+  },
+  toolBtn: {
+    alignItems: 'center', justifyContent: 'center',
+    paddingHorizontal: 10, paddingVertical: 7,
+    borderRadius: 10, borderWidth: 1, gap: 3, minWidth: 48,
+  },
+  toolLabel: { fontSize: 9, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.3 },
+  divider: { width: StyleSheet.hairlineWidth, height: 30, marginHorizontal: 4 },
+  historyBtn: {
+    width: 36, height: 36, borderRadius: 10,
+    borderWidth: 1, alignItems: 'center', justifyContent: 'center',
   },
 
   // Scroll
@@ -485,198 +630,85 @@ const styles = StyleSheet.create({
 
   // Title
   titleInput: {
-    fontSize: 26,
-    fontWeight: '800',
-    paddingHorizontal: 18,
-    paddingTop: 20,
-    paddingBottom: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    letterSpacing: -0.5,
+    fontSize: 26, fontWeight: '800',
+    paddingHorizontal: 18, paddingTop: 20, paddingBottom: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth, letterSpacing: -0.5,
   },
 
-  // Formatting toolbar
-  toolbarScroll: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  toolbarContent: {
-    flexDirection: 'row',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    gap: 8,
-  },
-  toolBtn: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-    borderWidth: 1,
-    gap: 3,
-    minWidth: 52,
-  },
-  toolLabel: {
-    fontSize: 9,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-  },
-
-  // Body editor
-  bodyInput: {
-    fontSize: 16,
-    lineHeight: 28,
-    minHeight: 200,
-    paddingHorizontal: 18,
-    paddingTop: 18,
-    paddingBottom: 10,
-    letterSpacing: 0.1,
-  },
-
-  // Stats row
-  statsRow: {
-    paddingHorizontal: 18,
-    paddingBottom: 8,
-  },
-  statsText: {
-    fontSize: 11,
-    letterSpacing: 0.2,
-  },
+  // Rich text editor (WebView)
+  editorWrap: { paddingHorizontal: 14, paddingTop: 6 },
 
   // Wikilink suggestions
   suggestBox: {
-    marginHorizontal: 18,
-    borderRadius: 12,
-    borderWidth: 1,
-    maxHeight: 160,
-    marginBottom: 8,
-    overflow: 'hidden',
+    marginHorizontal: 18, borderRadius: 12, borderWidth: 1,
+    maxHeight: 160, marginBottom: 8, overflow: 'hidden',
   },
   suggestItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingHorizontal: 14, paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   suggestText: { fontSize: 14, fontWeight: '500' },
 
   // AI bar
   aiBar: {
-    marginHorizontal: 18,
-    marginTop: 4,
-    marginBottom: 8,
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: 14,
-    gap: 10,
+    marginHorizontal: 18, marginTop: 8, marginBottom: 8,
+    borderRadius: 16, borderWidth: 1, padding: 14, gap: 10,
   },
-  aiBarHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  aiBarTitle: {
-    fontSize: 11,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-  },
+  aiBarHeader: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  aiBarTitle: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.6 },
   aiBarLoading: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 4,
+    flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'center', gap: 8, paddingVertical: 4,
   },
   aiBarLoadingText: { fontSize: 13, fontWeight: '600' },
-  aiBarBtns: {
-    flexDirection: 'row',
-    gap: 8,
-  },
+  aiBarBtns: { flexDirection: 'row', gap: 8 },
   aiBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 5,
-    paddingVertical: 9,
-    borderRadius: 10,
-    borderWidth: 1,
+    flex: 1, flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'center', gap: 5, paddingVertical: 9, borderRadius: 10, borderWidth: 1,
   },
-  aiBtnPrimary: {},
-  aiBtnText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
+  aiBtnText: { fontSize: 12, fontWeight: '700' },
 
-  // Tags section
-  tagsSection: {
-    margin: 18,
-    marginTop: 12,
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-  },
-  tagsHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 14,
-  },
-  tagsLabel: {
-    fontSize: 11,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-  },
-  tagChips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 12,
-  },
+  // Tags
+  tagsSection: { margin: 18, marginTop: 12, borderRadius: 16, padding: 16, borderWidth: 1 },
+  tagsHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 14 },
+  tagsLabel: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.6 },
+  tagChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
   tagChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 20,
-    borderWidth: 1,
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, borderWidth: 1,
   },
   tagChipText: { fontSize: 12, fontWeight: '700' },
-  quickTags: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginBottom: 14,
-  },
+  quickTags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 14 },
   quickTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    borderWidth: 1,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-    borderRadius: 20,
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    borderWidth: 1, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 20,
   },
   quickTagText: { fontSize: 12 },
   tagInputRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  tagInput: {
-    flex: 1,
-    fontSize: 13,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderWidth: 1,
+  tagInput: { flex: 1, fontSize: 13, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1 },
+  tagAddBtn: { width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
+
+  // Link modal
+  modalOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center', alignItems: 'center', paddingHorizontal: 28,
   },
-  tagAddBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
+  linkModal: {
+    width: '100%', borderRadius: 20, padding: 24, borderWidth: 1, gap: 12,
   },
+  linkModalTitle: { fontSize: 17, fontWeight: '800', letterSpacing: -0.3 },
+  linkModalHint: { fontSize: 12, lineHeight: 17 },
+  linkModalInput: {
+    borderWidth: 1, borderRadius: 12,
+    paddingHorizontal: 14, paddingVertical: 12,
+    fontSize: 14,
+  },
+  linkModalBtns: { flexDirection: 'row', gap: 10, marginTop: 4 },
+  linkModalBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, paddingVertical: 12, borderRadius: 12, borderWidth: 1,
+  },
+  linkModalBtnPrimary: {},
+  linkModalBtnText: { fontSize: 14, fontWeight: '700' },
 });

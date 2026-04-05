@@ -1,8 +1,8 @@
-import React, { useLayoutEffect } from 'react';
+import React, { useLayoutEffect, useCallback } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, StyleSheet, Alert,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useNotes } from '../hooks/useNotes';
 import { Note } from '../types';
 import { Icon } from '../components/Icon';
@@ -27,7 +27,7 @@ function NoteCard({ note, onPress, onLongPress }: { note: Note; onPress: () => v
         </View>
         {!!note.body_preview && (
           <Text style={[styles.cardPreview, { color: colors.textSecondary }]} numberOfLines={2}>
-            {note.body_preview}
+            {note.body_preview.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()}
           </Text>
         )}
       </View>
@@ -39,6 +39,11 @@ export function HomeScreen() {
   const navigation = useNavigation<any>();
   const { notes, loading, refresh, deleteNote } = useNotes();
   const { colors } = useTheme();
+
+  // Refresh list every time this screen comes into focus (after AddNote / Editor)
+  useFocusEffect(
+    useCallback(() => { refresh(); }, [refresh]),
+  );
 
   useLayoutEffect(() => {
     navigation.setOptions({

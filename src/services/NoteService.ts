@@ -4,6 +4,22 @@ import { uuid } from '../utils/uuid';
 import { extractWikilinks } from '../utils/wikilinkParser';
 import { Scalar } from '@op-engineering/op-sqlite';
 
+function htmlToPlainText(html: string): string {
+  return html
+    .replace(/<[^>]*>/g, ' ')   // strip tags
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function makePreview(body: string): string {
+  return htmlToPlainText(body).replace(/\[\[.*?\]\]/g, '').slice(0, 200);
+}
+
 function rowToNote(row: Record<string, Scalar>): Note {
   return {
     id: row.id as string,
@@ -22,7 +38,7 @@ export const NoteService = {
     const db = getDb();
     const id = uuid();
     const now = Date.now();
-    const preview = body.replace(/\[\[.*?\]\]/g, '').slice(0, 200);
+    const preview = makePreview(body);
 
     db.executeSync(
       `INSERT INTO notes (id, title, body, body_preview, created_at, updated_at, is_deleted)
@@ -50,7 +66,7 @@ export const NoteService = {
       sets.push('body = ?');
       values.push(fields.body);
       sets.push('body_preview = ?');
-      values.push(fields.body.replace(/\[\[.*?\]\]/g, '').slice(0, 200));
+      values.push(makePreview(fields.body));
     }
 
     values.push(id);
