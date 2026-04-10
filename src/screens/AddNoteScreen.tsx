@@ -179,15 +179,15 @@ export function AddNoteScreen() {
     }
     setSaving(true);
     try {
-      const bodyHtml = htmlContent ?? '';
-      const note = await NoteService.createNote(title.trim() || 'Untitled', bodyHtml);
-      navigation.replace('Editor', { noteId: note.id });
+      const bodyHtml = await editor.getHTML();
+      await NoteService.createNote(title.trim() || 'Untitled', bodyHtml ?? '');
+      navigation.goBack();
     } catch (e) {
       Alert.alert('Save failed', String(e instanceof Error ? e.message : e));
     } finally {
       setSaving(false);
     }
-  }, [title, htmlContent, plainText, navigation]);
+  }, [title, plainText, editor, navigation]);
 
   const handleDiscard = useCallback(() => {
     if (title || plainText) {

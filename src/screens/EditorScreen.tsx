@@ -204,8 +204,10 @@ export function EditorScreen() {
 
   const handleSave = useCallback(async () => {
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
-    await save(title, htmlContent ?? '');
-  }, [save, title, htmlContent]);
+    const currentHtml = await editor.getHTML();
+    await save(title, currentHtml ?? '');
+    navigation.goBack();
+  }, [save, title, editor, navigation]);
 
   const scheduleAutoSave = useCallback((t: string, b: string) => {
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
@@ -228,11 +230,16 @@ export function EditorScreen() {
     scheduleAutoSave(text, htmlContent ?? '');
   }, [htmlContent, scheduleAutoSave]);
 
-  // Save on unmount
+  // Save on unmount — use refs to avoid stale closures
+  const titleRef = useRef(title);
+  useEffect(() => { titleRef.current = title; }, [title]);
+
   useEffect(() => {
     return () => {
       if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
-      if (title || htmlContent) save(title, htmlContent ?? '');
+      editor.getHTML().then(html => {
+        if (titleRef.current || html) save(titleRef.current, html ?? '');
+      });
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
