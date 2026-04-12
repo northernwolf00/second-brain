@@ -2,8 +2,10 @@ import React, { useState,  useCallback, useEffect } from 'react';
 import {
   View, Text, TextInput, StyleSheet, TouchableOpacity,
   KeyboardAvoidingView, Platform, ScrollView, FlatList,
-  Alert, ActivityIndicator, Modal, Pressable,
+  ActivityIndicator, Pressable,
 } from 'react-native';
+import { useAlert } from '../theme/AlertContext';
+import { Dialog } from '../components/Dialog';
 import { useNavigation } from '@react-navigation/native';
 import {
   RichText,
@@ -77,6 +79,7 @@ function buildEditorCSS(bg: string, text: string, textSecondary: string, muted: 
 export function AddNoteScreen() {
   const navigation = useNavigation<any>();
   const { colors, isDark } = useTheme();
+  const { showAlert } = useAlert();
 
   const [title, setTitle] = useState('');
   const [tags, setTags] = useState<string[]>([]);
@@ -131,7 +134,7 @@ export function AddNoteScreen() {
     const lastAt = plainText.lastIndexOf('[[');
     if (lastAt >= 0) {
       const query = plainText.slice(lastAt + 2);
-      if (!query.includes(']]') && query.length >= 1) {
+      if (!query.includes(']]') && query.length >= 0) {
         NoteService.searchTitles(query).then(res => {
           setSuggestions(res);
           setShowSuggestions(res.length > 0);
@@ -174,7 +177,11 @@ export function AddNoteScreen() {
   // ── Save / Discard ──────────────────────────────────────────────────────────
   const handleSave = useCallback(async () => {
     if (!title.trim() && !plainText) {
-      Alert.alert('Empty note', 'Add a title or some content before saving.');
+      showAlert({
+        title: 'Empty note',
+        message: 'Add a title or some content before saving.',
+        icon: 'info-outline',
+      });
       return;
     }
     setSaving(true);
@@ -183,7 +190,11 @@ export function AddNoteScreen() {
       await NoteService.createNote(title.trim() || 'Untitled', bodyHtml ?? '');
       navigation.goBack();
     } catch (e) {
-      Alert.alert('Save failed', String(e instanceof Error ? e.message : e));
+      showAlert({
+        title: 'Save failed',
+        message: String(e instanceof Error ? e.message : e),
+        icon: 'error-outline',
+      });
     } finally {
       setSaving(false);
     }
@@ -191,14 +202,19 @@ export function AddNoteScreen() {
 
   const handleDiscard = useCallback(() => {
     if (title || plainText) {
-      Alert.alert('Discard note?', 'Your unsaved content will be lost.', [
-        { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: () => navigation.goBack() },
-      ]);
+      showAlert({
+        title: 'Discard note?',
+        message: 'Your unsaved content will be lost.',
+        icon: 'help-outline',
+        buttons: [
+          { text: 'Keep editing', style: 'cancel' },
+          { text: 'Discard', style: 'destructive', onPress: () => navigation.goBack() },
+        ],
+      });
     } else {
       navigation.goBack();
     }
-  }, [title, plainText, navigation]);
+  }, [title, plainText, navigation, showAlert]);
 
   // ── AI ──────────────────────────────────────────────────────────────────────
   const handleAIImprove = useCallback(async () => {
@@ -254,13 +270,13 @@ export function AddNoteScreen() {
   // The bridge sends commands to the TipTap editor in the WebView.
   const TOOLBAR = [
     {
-      icon: 'format_bold' as const,
+      icon: 'format-bold' as const,
       label: 'Bold',
       active: editorState.isBoldActive,
       action: () => editor.toggleBold(),
     },
     {
-      icon: 'format_italic' as const,
+      icon: 'format-italic' as const,
       label: 'Italic',
       active: editorState.isItalicActive,
       action: () => editor.toggleItalic(),
@@ -272,13 +288,13 @@ export function AddNoteScreen() {
       action: () => editor.toggleHeading(2),
     },
     {
-      icon: 'format_list_bulleted' as const,
+      icon: 'format-list-bulleted' as const,
       label: 'List',
       active: editorState.isBulletListActive,
       action: () => editor.toggleBulletList(),
     },
     {
-      icon: 'format_quote' as const,
+      icon: 'format-quote' as const,
       label: 'Quote',
       active: editorState.isBlockquoteActive,
       action: () => editor.toggleBlockquote(),
@@ -294,6 +310,16 @@ export function AddNoteScreen() {
       label: 'Link',
       active: editorState.isLinkActive,
       action: handleLinkPress,
+    },
+    {
+      icon: 'add-link' as const,
+      label: 'Wiki',
+      active: showSuggestions,
+      action: () => {
+        // Tentap doesn't have injectHTML, we use injectJS to command the internal TipTap
+        // We remove focus('end') so it inserts at the current cursor position
+        editor.injectJS("this.editor.commands.insertContent('[[')");
+      },
     },
   ];
 
@@ -473,7 +499,7 @@ export function AddNoteScreen() {
         {/* ── Tags ── */}
         <View style={[styles.tagsSection, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <View style={styles.tagsHeader}>
-            <Icon name="label_outline" size={15} color={colors.muted} />
+            <Icon name="label-outline" size={15} color={colors.muted} />
             <Text style={[styles.tagsLabel, { color: colors.muted }]}>Tags</Text>
           </View>
 
@@ -529,55 +555,31 @@ export function AddNoteScreen() {
       </ScrollView>
 
       {/* ── Link input modal ── */}
-      <Modal
+      <Dialog
         visible={showLinkModal}
-        transparent
-        animationType="fade"
-        statusBarTranslucent
-        onRequestClose={() => setShowLinkModal(false)}>
-        <Pressable
-          style={styles.modalOverlay}
-          onPress={() => setShowLinkModal(false)}>
-          <Pressable
-            style={[styles.linkModal, { backgroundColor: colors.card, borderColor: colors.border }]}
-            onPress={() => {}}>
-            <Text style={[styles.linkModalTitle, { color: colors.text }]}>Insert Link</Text>
-            <Text style={[styles.linkModalHint, { color: colors.muted }]}>
-              Paste a URL  ·  or type a note title to create a wikilink
-            </Text>
-
-            <TextInput
-              style={[styles.linkModalInput, { color: colors.text, backgroundColor: colors.inputBg, borderColor: colors.border }]}
-              value={linkInput}
-              onChangeText={setLinkInput}
-              placeholder="https://… or note title"
-              placeholderTextColor={colors.muted}
-              autoFocus
-              autoCapitalize="none"
-              autoCorrect={false}
-              returnKeyType="done"
-              onSubmitEditing={confirmLink}
-            />
-
-            <View style={styles.linkModalBtns}>
-              <TouchableOpacity
-                style={[styles.linkModalBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
-                onPress={() => { setShowLinkModal(false); setLinkInput(''); }}
-                activeOpacity={0.8}>
-                <Text style={[styles.linkModalBtnText, { color: colors.textSecondary }]}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.linkModalBtn, styles.linkModalBtnPrimary, { backgroundColor: colors.accent, borderColor: colors.accent, opacity: linkInput.trim() ? 1 : 0.5 }]}
-                onPress={confirmLink}
-                disabled={!linkInput.trim()}
-                activeOpacity={0.8}>
-                <Icon name="link" size={15} color="#fff" />
-                <Text style={[styles.linkModalBtnText, { color: '#fff' }]}>Insert</Text>
-              </TouchableOpacity>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
+        onClose={() => setShowLinkModal(false)}
+        title="Insert Link"
+        message="Paste a URL or type a note title to create a wikilink"
+        icon="link"
+        content={
+          <TextInput
+            style={[styles.linkModalInput, { color: colors.text, backgroundColor: colors.inputBg, borderColor: colors.border }]}
+            value={linkInput}
+            onChangeText={setLinkInput}
+            placeholder="https://… or note title"
+            placeholderTextColor={colors.muted}
+            autoFocus
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="done"
+            onSubmitEditing={confirmLink}
+          />
+        }
+        buttons={[
+          { text: 'Cancel', style: 'cancel', onPress: () => setLinkInput('') },
+          { text: 'Insert', style: 'default', onPress: confirmLink },
+        ]}
+      />
 
     </KeyboardAvoidingView>
   );

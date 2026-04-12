@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, TextInput,
-  ScrollView, Switch, Linking, Alert, ActivityIndicator,
+  ScrollView, Switch, Linking, ActivityIndicator,
 } from 'react-native';
+import { useAlert } from '../theme/AlertContext';
 import { useNavigation } from '@react-navigation/native';
 import { Store } from '../store/mmkv';
 import { GoogleDriveService } from '../services/GoogleDriveService';
@@ -31,6 +32,7 @@ function Divider({ colors }: { colors: any }) {
 
 function BackupSection({ colors }: { colors: any }) {
   const navigation = useNavigation<any>();
+  const { showAlert } = useAlert();
   const [googleUser, setGoogleUser] = useState<{ email: string; name: string } | null>(null);
   const [lastBackup, setLastBackup] = useState<number | null>(null);
   const [syncing, setSyncing] = useState(false);
@@ -54,29 +56,49 @@ function BackupSection({ colors }: { colors: any }) {
 
   const handleBackupNow = async () => {
     const passphrase = await Store.getSyncPassphrase();
-    if (!passphrase) { Alert.alert('No passphrase', 'Passphrase missing — please set up backup again.'); return; }
+    if (!passphrase) {
+      showAlert({
+        title: 'No passphrase',
+        message: 'Passphrase missing — please set up backup again.',
+        icon: 'warning-amber',
+      });
+      return;
+    }
     setSyncing(true);
     try {
       await GoogleDriveService.backup(passphrase);
       const ts = Date.now();
       setLastBackup(ts);
-      Alert.alert('Backed up', 'Notes saved to Google Drive.');
+      showAlert({
+        title: 'Backed up',
+        message: 'Notes saved to Google Drive.',
+        icon: 'cloud-done',
+      });
     } catch (e: any) {
-      Alert.alert('Backup failed', e?.message ?? 'Unknown error');
+      showAlert({
+        title: 'Backup failed',
+        message: e?.message ?? 'Unknown error',
+        icon: 'error-outline',
+      });
     } finally { setSyncing(false); }
   };
 
   const handleSignOut = () => {
-    Alert.alert('Disable backup?', 'You can re-enable it anytime.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Sign out', style: 'destructive', onPress: async () => {
-          await GoogleDriveService.signOut();
-          setGoogleUser(null);
-          setLastBackup(null);
+    showAlert({
+      title: 'Disable backup?',
+      message: 'You can re-enable it anytime.',
+      icon: 'cloud-off',
+      buttons: [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Sign out', style: 'destructive', onPress: async () => {
+            await GoogleDriveService.signOut();
+            setGoogleUser(null);
+            setLastBackup(null);
+          },
         },
-      },
-    ]);
+      ],
+    });
   };
 
   return (

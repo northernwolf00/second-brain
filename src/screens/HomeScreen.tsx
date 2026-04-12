@@ -1,11 +1,13 @@
 import React, { useLayoutEffect, useCallback } from 'react';
 import {
-  View, Text, FlatList, TouchableOpacity, StyleSheet, Alert,
+  View, Text, FlatList, TouchableOpacity, StyleSheet,
 } from 'react-native';
+import { useAlert } from '../theme/AlertContext';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useNotes } from '../hooks/useNotes';
 import { Note } from '../types';
 import { Icon } from '../components/Icon';
+import Animated, { FadeInRight } from 'react-native-reanimated';
 import { useTheme } from '../theme';
 
 function NoteCard({ note, onPress, onLongPress }: { note: Note; onPress: () => void; onLongPress: () => void }) {
@@ -39,6 +41,7 @@ export function HomeScreen() {
   const navigation = useNavigation<any>();
   const { notes, loading, refresh, deleteNote } = useNotes();
   const { colors } = useTheme();
+  const { showAlert } = useAlert();
 
   // Refresh list every time this screen comes into focus (after AddNote / Editor)
   useFocusEffect(
@@ -59,10 +62,15 @@ export function HomeScreen() {
   }, [navigation, colors]);
 
   const confirmDelete = (id: string, title: string) => {
-    Alert.alert('Delete note', `Delete "${title || 'Untitled'}"?`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => deleteNote(id) },
-    ]);
+    showAlert({
+      title: 'Delete note',
+      message: `Delete "${title || 'Untitled'}"?`,
+      icon: 'delete-outline',
+      buttons: [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: () => deleteNote(id) },
+      ],
+    });
   };
 
   return (
@@ -108,21 +116,25 @@ export function HomeScreen() {
 
       {/* New note FAB */}
       {notes.length > 0 && (
-        <TouchableOpacity
-          style={[styles.fab, { backgroundColor: colors.accent }]}
-          onPress={() => navigation.navigate('AddNote')}
-          activeOpacity={0.85}>
-          <Icon name="add" size={28} color="#fff" />
-        </TouchableOpacity>
+        <Animated.View entering={FadeInRight.delay(200).springify()}>
+          <TouchableOpacity
+            style={[styles.fab, { backgroundColor: colors.accent }]}
+            onPress={() => navigation.navigate('AddNote')}
+            activeOpacity={0.85}>
+            <Icon name="add" size={28} color="#fff" />
+          </TouchableOpacity>
+        </Animated.View>
       )}
 
       {/* AI Assistant FAB */}
-      <TouchableOpacity
-        style={[styles.aiFab, { backgroundColor: colors.surface, borderColor: colors.border }]}
-        onPress={() => navigation.navigate('AIAssistant', {})}
-        activeOpacity={0.85}>
-        <Icon name="auto-awesome" size={22} color={colors.accent} />
-      </TouchableOpacity>
+      <Animated.View entering={FadeInRight.delay(400).springify()}>
+        <TouchableOpacity
+          style={[styles.aiFab, { backgroundColor: colors.surface, borderColor: colors.border }]}
+          onPress={() => navigation.navigate('AIAssistant', {})}
+          activeOpacity={0.85}>
+          <Icon name="auto-awesome" size={22} color={colors.accent} />
+        </TouchableOpacity>
+      </Animated.View>
     </View>
   );
 }
@@ -161,24 +173,34 @@ const styles = StyleSheet.create({
   cardPreview: { fontSize: 13, lineHeight: 19 },
   headerBtn: { marginRight: 14 },
   fab: {
-    position: 'absolute', bottom: 24, right: 20,
-    width: 58, height: 58, borderRadius: 29,
-    justifyContent: 'center', alignItems: 'center',
+    position: 'absolute',
+    bottom: 24,
+    right: 20,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    justifyContent: 'center',
+    alignItems: 'center',
     elevation: 8,
-    shadowColor: '#7c6af7',
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.45,
-    shadowRadius: 10,
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
   },
   aiFab: {
-    position: 'absolute', bottom: 24, left: 20,
-    width: 50, height: 50, borderRadius: 25,
-    justifyContent: 'center', alignItems: 'center',
+    position: 'absolute',
+    bottom: 96,
+    right: 24,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    justifyContent: 'center',
+    alignItems: 'center',
     borderWidth: 1,
-    elevation: 4,
+    elevation: 6,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.12,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.15,
     shadowRadius: 6,
   },
 });

@@ -1,5 +1,5 @@
 import React from 'react';
-import { View } from 'react-native';
+import { View, StyleSheet, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NavigationContainer, DarkTheme, DefaultTheme } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
@@ -50,28 +50,62 @@ function wrap(Screen: React.ComponentType, label: string, useSafeArea = true) {
 }
 
 function TabNavigator() {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
+  const insets = useSafeAreaInsets();
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarIcon: ({ focused, size }) => (
-          <MaterialIcons
-            name={TAB_ICONS[route.name] ?? 'circle'}
-            size={size}
-            color={focused ? colors.accent : colors.muted}
-          />
-        ),
+        tabBarIcon: ({ focused }) => {
+          const iconName = TAB_ICONS[route.name] ?? 'circle';
+          return (
+            <View style={[
+              styles.iconContainer,
+              focused && { backgroundColor: isDark ? 'rgba(56,139,253,0.15)' : 'rgba(139,111,71,0.15)' }
+            ]}>
+              <MaterialIcons
+                name={iconName}
+                size={23}
+                color={focused ? (isDark ? colors.accent : colors.accent) : colors.muted}
+              />
+            </View>
+          );
+        },
         tabBarStyle: {
-          backgroundColor: colors.tabBar,
-          borderTopColor: colors.border,
-          borderTopWidth: 1,
-          paddingTop: 4,
-          height: 60,
+          position: 'absolute',
+          bottom: Platform.OS === 'ios' ? Math.max(insets.bottom, 20) : 20,
+          left: 16,
+          right: 16,
+          backgroundColor: isDark ? 'rgba(13, 17, 23, 0.98)' : 'rgba(255, 255, 255, 0.98)',
+          borderRadius: 28,
+          height: 68,
+          borderTopWidth: 0,
+          paddingBottom: 0,
+          paddingHorizontal: 8,
+          ...Platform.select({
+            ios: {
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 12 },
+              shadowOpacity: 0.25,
+              shadowRadius: 16,
+            },
+            android: {
+              elevation: 12,
+            },
+          }),
         },
         tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.muted,
-        tabBarLabelStyle: { fontSize: 10, fontWeight: '600', marginBottom: 4 },
+        tabBarLabelStyle: {
+          fontSize: 10,
+          fontWeight: '700',
+          marginBottom: 10,
+          marginTop: -2,
+          textTransform: 'uppercase',
+          letterSpacing: 0.5,
+        },
+        tabBarHideOnKeyboard: true,
       })}>
       <Tab.Screen name="Notes"     component={wrap(HomeScreen, 'Notes')} />
       <Tab.Screen name="Graph"     component={wrap(GraphScreen, 'Graph')} />
@@ -81,6 +115,17 @@ function TabNavigator() {
     </Tab.Navigator>
   );
 }
+
+const styles = StyleSheet.create({
+  iconContainer: {
+    width: 60,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 10,
+  },
+});
 
 export function RootNavigator() {
   const { isDark, colors } = useTheme();

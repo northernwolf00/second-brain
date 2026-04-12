@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, TextInput,
-  KeyboardAvoidingView, Platform, ActivityIndicator, Alert, ScrollView,
+  KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView,
 } from 'react-native';
+import { useAlert } from '../theme/AlertContext';
 import { useNavigation } from '@react-navigation/native';
 import { GoogleDriveService } from '../services/GoogleDriveService';
 import { Store } from '../store/mmkv';
@@ -14,6 +15,7 @@ type Step = 'intro' | 'passphrase' | 'done';
 export function BackupSetupScreen() {
   const navigation = useNavigation<any>();
   const { colors } = useTheme();
+  const { showAlert } = useAlert();
 
   const [step, setStep] = useState<Step>('intro');
   const [passphrase, setPassphrase] = useState('');
@@ -29,7 +31,11 @@ export function BackupSetupScreen() {
       setStep('passphrase');
     } catch (e: any) {
       if (e?.code !== 'SIGN_IN_CANCELLED') {
-        Alert.alert('Sign-in failed', e?.message ?? 'Could not sign in with Google.');
+        showAlert({
+          title: 'Sign-in failed',
+          message: e?.message ?? 'Could not sign in with Google.',
+          icon: 'error-outline',
+        });
       }
     } finally {
       setLoading(false);
@@ -38,11 +44,19 @@ export function BackupSetupScreen() {
 
   const handleSavePassphrase = async () => {
     if (passphrase.length < 6) {
-      Alert.alert('Too short', 'Use at least 6 characters.');
+      showAlert({
+        title: 'Too short',
+        message: 'Use at least 6 characters.',
+        icon: 'warning-amber',
+      });
       return;
     }
     if (passphrase !== confirm) {
-      Alert.alert('Mismatch', 'Passphrases do not match.');
+      showAlert({
+        title: 'Mismatch',
+        message: 'Passphrases do not match.',
+        icon: 'warning-amber',
+      });
       return;
     }
     setLoading(true);
@@ -52,7 +66,11 @@ export function BackupSetupScreen() {
       await GoogleDriveService.backup(passphrase);
       setStep('done');
     } catch (e: any) {
-      Alert.alert('Backup failed', e?.message ?? 'Could not save backup.');
+      showAlert({
+        title: 'Backup failed',
+        message: e?.message ?? 'Could not save backup.',
+        icon: 'error-outline',
+      });
     } finally {
       setLoading(false);
     }

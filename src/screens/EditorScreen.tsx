@@ -2,8 +2,10 @@ import React, { useEffect, useRef, useState, useCallback, useLayoutEffect } from
 import {
   View, Text, TextInput, StyleSheet, TouchableOpacity,
   KeyboardAvoidingView, Platform, ScrollView, FlatList,
-  ActivityIndicator, Modal, Pressable, Alert,
+  ActivityIndicator, 
 } from 'react-native';
+import { useAlert } from '../theme/AlertContext';
+import { Dialog } from '../components/Dialog';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import {
@@ -19,6 +21,8 @@ import { Store } from '../store/mmkv';
 import { useAI } from '../hooks/useAI';
 import { useTheme } from '../theme';
 import { Icon } from '../components/Icon';
+
+const QUICK_TAGS = ['idea', 'todo', 'journal', 'research', 'book', 'meeting', 'quote'];
 
 // ── Editor CSS ────────────────────────────────────────────────────────────────
 function buildEditorCSS(
@@ -82,6 +86,7 @@ export function EditorScreen() {
   const route = useRoute<any>();
   const { noteId } = route.params as { noteId: string | null };
   const { colors, isDark } = useTheme();
+  const { showAlert } = useAlert();
 
   const [title, setTitle] = useState('');
   const [note, setNote] = useState<Note | null>(null);
@@ -91,6 +96,8 @@ export function EditorScreen() {
   const [backlinks, setBacklinks] = useState<Note[]>([]);
   const [showLinkModal, setShowLinkModal] = useState(false);
   const [linkInput, setLinkInput] = useState('');
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState('');
 
   // null  = still loading from DB
   // ''    = new / empty note
@@ -196,7 +203,11 @@ export function EditorScreen() {
         Store.setLastOpenedNoteId(created.id);
       }
     } catch (e) {
-      Alert.alert('Save failed', String(e instanceof Error ? e.message : e));
+      showAlert({
+        title: 'Save failed',
+        message: String(e instanceof Error ? e.message : e),
+        icon: 'error-outline',
+      });
     } finally {
       setSaving(false);
     }
@@ -295,15 +306,37 @@ export function EditorScreen() {
     analyzeNote(title, plainText);
   }, [title, plainText, analyzeNote]);
 
+  // ── Tags ────────────────────────────────────────────────────────────────────
+  const addTag = useCallback((tag: string) => {
+    const clean = tag.trim().toLowerCase().replace(/\s+/g, '-');
+    if (!clean || tags.includes(clean)) return;
+    setTags(prev => [...prev, clean]);
+    setTagInput('');
+  }, [tags]);
+
+  const removeTag = useCallback((tag: string) => {
+    setTags(prev => prev.filter(t => t !== tag));
+  }, []);
+
   // ── Toolbar ───────────────────────────────────────────────────────────────
   const TOOLBAR = [
-    { icon: 'format_bold'          as const, label: 'Bold',   active: editorState.isBoldActive,       action: () => editor.toggleBold() },
-    { icon: 'format_italic'        as const, label: 'Italic', active: editorState.isItalicActive,     action: () => editor.toggleItalic() },
+    { icon: 'format-bold'          as const, label: 'Bold',   active: editorState.isBoldActive,       action: () => editor.toggleBold() },
+    { icon: 'format-italic'        as const, label: 'Italic', active: editorState.isItalicActive,     action: () => editor.toggleItalic() },
     { icon: 'title'                as const, label: 'H2',     active: editorState.headingLevel === 2, action: () => editor.toggleHeading(2) },
-    { icon: 'format_list_bulleted' as const, label: 'List',   active: editorState.isBulletListActive, action: () => editor.toggleBulletList() },
-    { icon: 'format_quote'         as const, label: 'Quote',  active: editorState.isBlockquoteActive, action: () => editor.toggleBlockquote() },
+    { icon: 'format-list-bulleted' as const, label: 'List',   active: editorState.isBulletListActive, action: () => editor.toggleBulletList() },
+    { icon: 'format-quote'         as const, label: 'Quote',  active: editorState.isBlockquoteActive, action: () => editor.toggleBlockquote() },
     { icon: 'code'                 as const, label: 'Code',   active: editorState.isCodeActive,       action: () => editor.toggleCode() },
     { icon: 'link'                 as const, label: 'Link',   active: editorState.isLinkActive,       action: handleLinkPress },
+    {
+      icon: 'add-link' as const,
+      label: 'Wiki',
+      active: showSuggestions,
+      action: () => {
+        // Tentap doesn't have injectHTML, we use injectJS to command the internal TipTap
+        // We remove focus('end') so it inserts at the current cursor position
+        editor.injectJS("this.editor.commands.insertContent('[[')");
+      },
+    },
   ];
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -486,52 +519,90 @@ export function EditorScreen() {
             </View>
           )}
 
+          {/* ── Tags ── */}
+          <View style={[styles.tagsSection, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={styles.tagsHeader}>
+              <Icon name="label-outline" size={15} color={colors.muted} />
+              <Text style={[styles.tagsLabel, { color: colors.muted }]}>Tags</Text>
+            </View>
+
+            {tags.length > 0 && (
+              <View style={styles.tagChips}>
+                {tags.map(tag => (
+                  <TouchableOpacity
+                    key={tag}
+                    style={[styles.tagChip, { backgroundColor: colors.accentSoft, borderColor: colors.accentDim }]}
+                    onPress={() => removeTag(tag)} activeOpacity={0.7}>
+                    <Text style={[styles.tagChipText, { color: colors.accent }]}>#{tag}</Text>
+                    <Icon name="close" size={11} color={colors.accent} />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            <View style={styles.quickTags}>
+              {QUICK_TAGS.filter(t => !tags.includes(t)).map(tag => (
+                <TouchableOpacity
+                  key={tag}
+                  style={[styles.quickTag, { borderColor: colors.border, backgroundColor: colors.surface }]}
+                  onPress={() => addTag(tag)} activeOpacity={0.7}>
+                  <Icon name="add" size={12} color={colors.muted} />
+                  <Text style={[styles.quickTagText, { color: colors.textSecondary }]}>{tag}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <View style={styles.tagInputRow}>
+              <TextInput
+                style={[styles.tagInput, { color: colors.text, backgroundColor: colors.inputBg, borderColor: colors.border }]}
+                value={tagInput}
+                onChangeText={setTagInput}
+                placeholder="Add custom tag…"
+                placeholderTextColor={colors.muted}
+                returnKeyType="done"
+                onSubmitEditing={() => addTag(tagInput)}
+                blurOnSubmit={false}
+              />
+              <TouchableOpacity
+                style={[styles.tagAddBtn, {
+                  backgroundColor: tagInput.trim() ? colors.accent : colors.card,
+                  borderColor: colors.border,
+                }]}
+                onPress={() => addTag(tagInput)}
+                disabled={!tagInput.trim()} activeOpacity={0.8}>
+                <Icon name="add" size={18} color={tagInput.trim() ? '#fff' : colors.muted} />
+              </TouchableOpacity>
+            </View>
+          </View>
+
         </ScrollView>
 
         {/* Link modal */}
-        <Modal
+        <Dialog
           visible={showLinkModal}
-          transparent
-          animationType="fade"
-          statusBarTranslucent
-          onRequestClose={() => setShowLinkModal(false)}>
-          <Pressable style={styles.modalOverlay} onPress={() => setShowLinkModal(false)}>
-            <Pressable style={[styles.linkModal, { backgroundColor: colors.card, borderColor: colors.border }]} onPress={() => {}}>
-              <Text style={[styles.linkModalTitle, { color: colors.text }]}>Insert Link</Text>
-              <Text style={[styles.linkModalHint, { color: colors.muted }]}>
-                Paste a URL · or type a note title to create a wikilink
-              </Text>
-              <TextInput
-                style={[styles.linkModalInput, { color: colors.text, backgroundColor: colors.inputBg, borderColor: colors.border }]}
-                value={linkInput}
-                onChangeText={setLinkInput}
-                placeholder="https://… or note title"
-                placeholderTextColor={colors.muted}
-                autoFocus
-                autoCapitalize="none"
-                autoCorrect={false}
-                returnKeyType="done"
-                onSubmitEditing={confirmLink}
-              />
-              <View style={styles.linkModalBtns}>
-                <TouchableOpacity
-                  style={[styles.linkModalBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
-                  onPress={() => { setShowLinkModal(false); setLinkInput(''); }}
-                  activeOpacity={0.8}>
-                  <Text style={[styles.linkModalBtnText, { color: colors.textSecondary }]}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.linkModalBtn, { backgroundColor: colors.accent, borderColor: colors.accent, opacity: linkInput.trim() ? 1 : 0.5 }]}
-                  onPress={confirmLink}
-                  disabled={!linkInput.trim()}
-                  activeOpacity={0.8}>
-                  <Icon name="link" size={15} color="#fff" />
-                  <Text style={[styles.linkModalBtnText, { color: '#fff' }]}>Insert</Text>
-                </TouchableOpacity>
-              </View>
-            </Pressable>
-          </Pressable>
-        </Modal>
+          onClose={() => setShowLinkModal(false)}
+          title="Insert Link"
+          message="Paste a URL or type a note title to create a wikilink"
+          icon="link"
+          content={
+            <TextInput
+              style={[styles.linkModalInput, { color: colors.text, backgroundColor: colors.inputBg, borderColor: colors.border }]}
+              value={linkInput}
+              onChangeText={setLinkInput}
+              placeholder="https://… or note title"
+              placeholderTextColor={colors.muted}
+              autoFocus
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="done"
+              onSubmitEditing={confirmLink}
+            />
+          }
+          buttons={[
+            { text: 'Cancel', style: 'cancel', onPress: () => setLinkInput('') },
+            { text: 'Insert', style: 'default', onPress: confirmLink },
+          ]}
+        />
 
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -632,6 +703,26 @@ const styles = StyleSheet.create({
     padding: 12, borderRadius: 12, borderWidth: 1,
   },
   backlinkText: { flex: 1, fontSize: 14, fontWeight: '500' },
+
+  // Tags
+  tagsSection: { margin: 18, marginTop: 12, borderRadius: 16, padding: 16, borderWidth: 1 },
+  tagsHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 14 },
+  tagsLabel: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.6 },
+  tagChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
+  tagChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, borderWidth: 1,
+  },
+  tagChipText: { fontSize: 12, fontWeight: '700' },
+  quickTags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 14 },
+  quickTag: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    borderWidth: 1, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 20,
+  },
+  quickTagText: { fontSize: 12 },
+  tagInputRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  tagInput: { flex: 1, fontSize: 13, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1 },
+  tagAddBtn: { width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
 
   // Link modal
   modalOverlay: {

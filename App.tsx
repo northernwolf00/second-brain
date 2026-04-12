@@ -7,6 +7,7 @@ import { DatabaseService } from './src/db/DatabaseService';
 import { NotificationService } from './src/services/NotificationService';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import { ThemeProvider, useTheme } from './src/theme';
+import { AlertProvider } from './src/theme/AlertContext';
 import { GoogleDriveService } from './src/services/GoogleDriveService';
 
 GoogleDriveService.configure();
@@ -62,7 +63,9 @@ function AppInner() {
 export default function App() {
   return (
     <ThemeProvider>
-      <AppInner />
+      <AlertProvider>
+        <AppInner />
+      </AlertProvider>
     </ThemeProvider>
   );
 }
