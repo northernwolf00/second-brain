@@ -1,97 +1,127 @@
-This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
+<div align="center">
 
-# Getting Started
+<img src="./assets/images/header.png" width="100%" alt="Second Brain Header" />
 
-> **Note**: Make sure you have completed the [Set Up Your Environment](https://reactnative.dev/docs/set-up-your-environment) guide before proceeding.
+# 🧠 Second Brain
 
-## Step 1: Start Metro
+**Empower your mind with AI-driven knowledge management.**
 
-First, you will need to run **Metro**, the JavaScript build tool for React Native.
+[![React Native](https://img.shields.io/badge/React_Native-0.84-blue?logo=react&logoColor=white)](https://reactnative.dev)
+[![Expo](https://img.shields.io/badge/Expo-56-000020?logo=expo&logoColor=white)](https://expo.dev)
+[![AI Powered](https://img.shields.io/badge/AI_Powered-Gemini-orange?logo=google-gemini&logoColor=white)](https://ai.google.dev)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-To start the Metro dev server, run the following command from the root of your React Native project:
+[Features](#-features) • [Tech Stack](#-tech-stack) • [Getting Started](#-getting-started) • [Architecture](#-architecture)
 
-```sh
-# Using npm
-npm start
+</div>
 
-# OR using Yarn
-yarn start
+---
+
+## ✨ Overview
+
+**Second Brain** is a next-generation note-taking and knowledge management application designed to help you capture, connect, and resurface your thoughts effortlessly. Built with a focus on performance and intelligence, it transforms raw notes into a living web of knowledge.
+
+## 🚀 Features
+
+### 🤖 AI-Powered Intelligence
+Integrate with **Google Gemini** to chat with your notes, summarize long content, and generate insights automatically. Your notes aren't just text; they're data for your personal intelligence.
+
+### 🕸️ Knowledge Graph
+Visualize connections between your ideas with a dynamic **D3-force graph**. Discover hidden relationships and navigate through your second brain spatially.
+
+### ✍️ Rich Text Editor
+A premium writing experience powered by **Tentap Editor**. Support for Markdown, task lists, and advanced formatting ensures your thoughts are captured beautifully.
+
+### 🔋 High Performance
+Powered by **OP-SQLite** with FTS5 for lightning-fast full-text search across thousands of notes, all stored securely on your device.
+
+### ☁️ Sync & Backup
+Never lose a thought. Seamlessly backup and sync your knowledge base using **Google Drive** integration.
+
+### 📅 Daily Resurface
+Keep your knowledge fresh. The daily resurface feature uses spaced-repetition logic to bring back old notes for review.
+
+---
+
+## 🛠 Tech Stack
+
+- **Framework**: [React Native](https://reactnative.dev/) with [Expo](https://expo.dev/)
+- **Language**: [TypeScript](https://www.typescriptlang.org/)
+- **Database**: [OP-SQLite](https://github.com/op-engineering/op-sqlite) (High-performance SQLite)
+- **AI**: [Google Generative AI (Gemini)](https://ai.google.dev/)
+- **UI/Layout**: [React Navigation](https://reactnavigation.org/), [Reanimated](https://docs.swmansion.com/react-native-reanimated/)
+- **Visuals**: [D3.js](https://d3js.org/) (Force-directed graphs), [Lucide Icons](https://lucide.dev/)
+
+---
+
+## 🚦 Getting Started
+
+### Prerequisites
+- Node.js (>= 22.11)
+- Expo CLI
+- Android / iOS development environment
+
+### Installation
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/yourusername/SecondBrain.git
+   cd SecondBrain
+   ```
+
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
+
+3. **Set up Environment Variables**
+   Create a `.env` file and add your Gemini API Key:
+   ```env
+   GEMINI_API_KEY=your_api_key_here
+   ```
+
+4. **Run the application**
+   ```bash
+   # Android
+   npm run android
+   
+   # iOS
+   npm run ios
+   ```
+
+---
+
+## 📂 Architecture
+
+The project follows a modular structure for scalability:
+
+```text
+src/
+├── components/   # Reusable UI components
+├── db/           # SQLite schema and migrations
+├── hooks/        # Custom React hooks
+├── navigation/   # Navigation stack definitions
+├── screens/      # Functional app screens
+├── services/     # Business logic (AI, Sync, Search)
+├── store/        # State management
+├── theme/        # Theme & design tokens
+└── utils/        # Helper functions
 ```
 
-## Step 2: Build and run your app
+---
 
-With Metro running, open a new terminal window/pane from the root of your React Native project, and use one of the following commands to build and run your Android or iOS app:
+## 🤝 Contributing
 
-### Android
+Contributions are welcome! Please feel free to submit a Pull Request.
 
-```sh
-# Using npm
-npm run android
+1. Fork the Project
+2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the Branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
-# OR using Yarn
-yarn android
-```
+---
 
-### iOS
-
-For iOS, remember to install CocoaPods dependencies (this only needs to be run on first clone or after updating native deps).
-
-The first time you create a new project, run the Ruby bundler to install CocoaPods itself:
-
-```sh
-bundle install
-```
-
-Then, and every time you update your native dependencies, run:
-
-```sh
-bundle exec pod install
-```
-
-For more information, please visit [CocoaPods Getting Started guide](https://guides.cocoapods.org/using/getting-started.html).
-
-```sh
-# Using npm
-npm run ios
-
-# OR using Yarn
-yarn ios
-```
-
-If everything is set up correctly, you should see your new app running in the Android Emulator, iOS Simulator, or your connected device.
-
-This is one way to run your app — you can also build it directly from Android Studio or Xcode.
-
-## Step 3: Modify your app
-
-Now that you have successfully run the app, let's make changes!
-
-Open `App.tsx` in your text editor of choice and make some changes. When you save, your app will automatically update and reflect these changes — this is powered by [Fast Refresh](https://reactnative.dev/docs/fast-refresh).
-
-When you want to forcefully reload, for example to reset the state of your app, you can perform a full reload:
-
-- **Android**: Press the <kbd>R</kbd> key twice or select **"Reload"** from the **Dev Menu**, accessed via <kbd>Ctrl</kbd> + <kbd>M</kbd> (Windows/Linux) or <kbd>Cmd ⌘</kbd> + <kbd>M</kbd> (macOS).
-- **iOS**: Press <kbd>R</kbd> in iOS Simulator.
-
-## Congratulations! :tada:
-
-You've successfully run and modified your React Native App. :partying_face:
-
-### Now what?
-
-- If you want to add this new React Native code to an existing application, check out the [Integration guide](https://reactnative.dev/docs/integration-with-existing-apps).
-- If you're curious to learn more about React Native, check out the [docs](https://reactnative.dev/docs/getting-started).
-
-# Troubleshooting
-
-If you're having issues getting the above steps to work, see the [Troubleshooting](https://reactnative.dev/docs/troubleshooting) page.
-
-# Learn More
-
-To learn more about React Native, take a look at the following resources:
-
-- [React Native Website](https://reactnative.dev) - learn more about React Native.
-- [Getting Started](https://reactnative.dev/docs/environment-setup) - an **overview** of React Native and how setup your environment.
-- [Learn the Basics](https://reactnative.dev/docs/getting-started) - a **guided tour** of the React Native **basics**.
-- [Blog](https://reactnative.dev/blog) - read the latest official React Native **Blog** posts.
-- [`@facebook/react-native`](https://github.com/facebook/react-native) - the Open Source; GitHub **repository** for React Native.
+<div align="center">
+  Built with ❤️ for digital gardeners.
+</div>

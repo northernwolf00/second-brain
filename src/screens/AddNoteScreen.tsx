@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState,  useCallback, useEffect } from 'react';
 import {
   View, Text, TextInput, StyleSheet, TouchableOpacity,
   KeyboardAvoidingView, Platform, ScrollView, FlatList,
@@ -123,7 +123,7 @@ export function AddNoteScreen() {
       'app-theme',
     );
     editor.setPlaceholder('Start writing…\n\nTip: type [[ to link to another note');
-  }, [editorState.isReady, isDark]); // re-inject on theme toggle
+  }, [colors.accent, colors.bg, colors.muted, colors.text, colors.textSecondary, editor, editorState.isReady, isDark]); // re-inject on theme toggle
 
   // ── Wikilink autocomplete ───────────────────────────────────────────────────
   useEffect(() => {
