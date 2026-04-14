@@ -166,7 +166,7 @@ export function EditorScreen() {
       buildEditorCSS(colors.bg, colors.text, colors.textSecondary, colors.muted, colors.accent, isDark),
       'app-theme',
     );
-    editor.setPlaceholder('Start writing… use [[ to link notes');
+    editor.setPlaceholder('Start writing… click "Wiki" or type [[ to link notes');
 
     // noteBody is guaranteed non-null here because <RichText> is only rendered
     // when noteBody !== null, and isReady can only become true after <RichText> mounts.
@@ -260,14 +260,13 @@ export function EditorScreen() {
     if (!plainText) { setShowSuggestions(false); return; }
     const lastAt = plainText.lastIndexOf('[[');
     if (lastAt >= 0) {
-      const query = plainText.slice(lastAt + 2);
-      if (!query.includes(']]') && query.length >= 1) {
-        NoteService.searchTitles(query).then(res => {
-          setSuggestions(res);
-          setShowSuggestions(res.length > 0);
-        });
-        return;
-      }
+      const after = plainText.slice(lastAt + 2);
+      const query = after.split(']]')[0];
+      NoteService.searchTitles(query).then(res => {
+        setSuggestions(res);
+        setShowSuggestions(res.length > 0);
+      });
+      return;
     }
     setShowSuggestions(false);
   }, [plainText]);
@@ -278,10 +277,11 @@ export function EditorScreen() {
     if (lastAt >= 0) {
       const after = html.slice(lastAt + 2);
       const endIdx = after.search(/[<>]|\]\]/);
-      const newHtml =
-        html.slice(0, lastAt) +
-        `[[${targetTitle}]]` +
-        (endIdx >= 0 ? after.slice(endIdx) : '');
+      let remaining = '';
+      if (endIdx >= 0) {
+        remaining = after.slice(after.startsWith(']]', endIdx) ? endIdx + 2 : endIdx);
+      }
+      const newHtml = html.slice(0, lastAt) + `[[${targetTitle}]]` + remaining;
       editor.setContent(newHtml);
     }
     setShowSuggestions(false);
@@ -332,9 +332,13 @@ export function EditorScreen() {
       label: 'Wiki',
       active: showSuggestions,
       action: () => {
-        // Tentap doesn't have injectHTML, we use injectJS to command the internal TipTap
-        // We remove focus('end') so it inserts at the current cursor position
-        editor.injectJS("this.editor.commands.insertContent('[[')");
+        // We insert [[]] and place cursor inside at currentPos+2
+        editor.injectJS(`
+          (function() {
+            const { from } = this.editor.state.selection;
+            this.editor.chain().focus().insertContent('[[]]').setTextSelection(from + 2).run();
+          }).call(this);
+        `);
       },
     },
   ];
@@ -350,7 +354,7 @@ export function EditorScreen() {
             onPress={() => navigation.goBack()}
             style={[styles.iconBtn, { backgroundColor: colors.card }]}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Icon name="arrow_back" size={20} color={colors.textSecondary} />
+            <Icon name="arrow-back" size={20} color={colors.textSecondary} />
           </TouchableOpacity>
 
           <Text style={[styles.headerTitle, { color: colors.text }]} numberOfLines={1}>
@@ -456,7 +460,7 @@ export function EditorScreen() {
                   <TouchableOpacity
                     style={[styles.suggestItem, { borderBottomColor: colors.border }]}
                     onPress={() => insertWikilink(item.title)}>
-                    <Icon name="insert_link" size={15} color={colors.accent} />
+                    <Icon name="insert-link" size={15} color={colors.accent} />
                     <Text style={[styles.suggestText, { color: colors.text }]}>{item.title}</Text>
                   </TouchableOpacity>
                 )}
@@ -472,7 +476,7 @@ export function EditorScreen() {
                 onPress={handleAIAnalyze}
                 disabled={aiLoading}
                 activeOpacity={0.8}>
-                <Icon name="auto_awesome" size={15} color={colors.accent} />
+                <Icon name="auto-awesome" size={15} color={colors.accent} />
                 <Text style={[styles.aiAnalyzeBtnText, { color: colors.accent }]}>
                   {aiLoading ? 'Analyzing…' : 'Analyze with AI'}
                 </Text>
@@ -513,7 +517,7 @@ export function EditorScreen() {
                   activeOpacity={0.7}>
                   <Icon name="article" size={14} color={colors.accent} />
                   <Text style={[styles.backlinkText, { color: colors.accent }]}>{bl.title || 'Untitled'}</Text>
-                  <Icon name="chevron_right" size={16} color={colors.muted} />
+                  <Icon name="chevron-right" size={16} color={colors.muted} />
                 </TouchableOpacity>
               ))}
             </View>

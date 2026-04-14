@@ -1,7 +1,8 @@
 import React, { useLayoutEffect, useCallback } from 'react';
 import {
-  View, Text, FlatList, TouchableOpacity, StyleSheet,
+  View, Text, FlatList, TouchableOpacity, StyleSheet, Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAlert } from '../theme/AlertContext';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useNotes } from '../hooks/useNotes';
@@ -42,6 +43,13 @@ export function HomeScreen() {
   const { notes, loading, refresh, deleteNote } = useNotes();
   const { colors } = useTheme();
   const { showAlert } = useAlert();
+  const insets = useSafeAreaInsets();
+
+  // The tab bar is floating at bottom: 20 with height: 68
+  const tabOffset = 88;
+  const bottomExtra = Platform.OS === 'ios' ? Math.max(insets.bottom, 0) : 0;
+  const fabBottom = tabOffset + 16 + bottomExtra;
+  const aiFabBottom = fabBottom + 76; // stack ai fab above new note fab
 
   // Refresh list every time this screen comes into focus (after AddNote / Editor)
   useFocusEffect(
@@ -80,7 +88,7 @@ export function HomeScreen() {
         keyExtractor={n => n.id}
         onRefresh={refresh}
         refreshing={loading}
-        contentContainerStyle={notes.length === 0 ? styles.emptyContainer : styles.list}
+        contentContainerStyle={notes.length === 0 ? styles.emptyContainer : [styles.list, { paddingBottom: tabOffset + 100 }]}
         ListHeaderComponent={
           notes.length > 0 ? (
             <Text style={[styles.listHeader, { color: colors.muted }]}>
@@ -114,25 +122,27 @@ export function HomeScreen() {
         )}
       />
 
-      {/* New note FAB */}
-      {notes.length > 0 && (
-        <Animated.View entering={FadeInRight.delay(200).springify()}>
-          <TouchableOpacity
-            style={[styles.fab, { backgroundColor: colors.accent }]}
-            onPress={() => navigation.navigate('AddNote')}
-            activeOpacity={0.85}>
-            <Icon name="add" size={28} color="#fff" />
-          </TouchableOpacity>
-        </Animated.View>
-      )}
-
       {/* AI Assistant FAB */}
-      <Animated.View entering={FadeInRight.delay(400).springify()}>
+      <Animated.View
+        entering={FadeInRight.delay(400).springify()}
+        style={[styles.aiFab, { backgroundColor: colors.surface, borderColor: colors.border, bottom: aiFabBottom }]}>
         <TouchableOpacity
-          style={[styles.aiFab, { backgroundColor: colors.surface, borderColor: colors.border }]}
           onPress={() => navigation.navigate('AIAssistant', {})}
+          style={styles.fabTouch}
           activeOpacity={0.85}>
           <Icon name="auto-awesome" size={22} color={colors.accent} />
+        </TouchableOpacity>
+      </Animated.View>
+
+      {/* New note FAB */}
+      <Animated.View
+        entering={FadeInRight.delay(200).springify()}
+        style={[styles.fab, { backgroundColor: colors.accent, borderColor: colors.accentDim, bottom: fabBottom }]}>
+        <TouchableOpacity
+          onPress={() => navigation.navigate('AddNote')}
+          style={styles.fabTouch}
+          activeOpacity={0.85}>
+          <Icon name="add" size={30} color="#fff" />
         </TouchableOpacity>
       </Animated.View>
     </View>
@@ -174,33 +184,42 @@ const styles = StyleSheet.create({
   headerBtn: { marginRight: 14 },
   fab: {
     position: 'absolute',
-    bottom: 24,
-    right: 20,
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    right: 24,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    borderWidth: 1.5,
     justifyContent: 'center',
     alignItems: 'center',
     elevation: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    zIndex: 99,
+    overflow: 'hidden',
   },
   aiFab: {
     position: 'absolute',
-    bottom: 96,
-    right: 24,
+    right: 28,
     width: 52,
     height: 52,
     borderRadius: 26,
+    borderWidth: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1,
     elevation: 6,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    zIndex: 98,
+    overflow: 'hidden',
+  },
+  fabTouch: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

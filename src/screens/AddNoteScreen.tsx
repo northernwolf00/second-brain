@@ -125,7 +125,7 @@ export function AddNoteScreen() {
       buildEditorCSS(colors.bg, colors.text, colors.textSecondary, colors.muted, colors.accent, isDark),
       'app-theme',
     );
-    editor.setPlaceholder('Start writing…\n\nTip: type [[ to link to another note');
+    editor.setPlaceholder('Start writing…\n\nTip: click "Wiki" in toolbar or type [[ to link to another note');
   }, [colors.accent, colors.bg, colors.muted, colors.text, colors.textSecondary, editor, editorState.isReady, isDark]); // re-inject on theme toggle
 
   // ── Wikilink autocomplete ───────────────────────────────────────────────────
@@ -133,14 +133,13 @@ export function AddNoteScreen() {
     if (!plainText) { setShowSuggestions(false); return; }
     const lastAt = plainText.lastIndexOf('[[');
     if (lastAt >= 0) {
-      const query = plainText.slice(lastAt + 2);
-      if (!query.includes(']]') && query.length >= 0) {
-        NoteService.searchTitles(query).then(res => {
-          setSuggestions(res);
-          setShowSuggestions(res.length > 0);
-        });
-        return;
-      }
+      const after = plainText.slice(lastAt + 2);
+      const query = after.split(']]')[0];
+      NoteService.searchTitles(query).then(res => {
+        setSuggestions(res);
+        setShowSuggestions(res.length > 0);
+      });
+      return;
     }
     setShowSuggestions(false);
   }, [plainText]);
@@ -151,12 +150,14 @@ export function AddNoteScreen() {
     const lastAt = html.lastIndexOf('[[');
     if (lastAt >= 0) {
       const after = html.slice(lastAt + 2);
-      // end of query = first '<' or '>>' or ']]'
+      // find index of first closing bracket or other tag
       const endIdx = after.search(/[<>]|\]\]/);
-      const newHtml =
-        html.slice(0, lastAt) +
-        `[[${targetTitle}]]` +
-        (endIdx >= 0 ? after.slice(endIdx) : '');
+      let remaining = '';
+      if (endIdx >= 0) {
+        // Skip ]] if it matched
+        remaining = after.slice(after.startsWith(']]', endIdx) ? endIdx + 2 : endIdx);
+      }
+      const newHtml = html.slice(0, lastAt) + `[[${targetTitle}]]` + remaining;
       editor.setContent(newHtml);
     }
     setShowSuggestions(false);
@@ -316,9 +317,13 @@ export function AddNoteScreen() {
       label: 'Wiki',
       active: showSuggestions,
       action: () => {
-        // Tentap doesn't have injectHTML, we use injectJS to command the internal TipTap
-        // We remove focus('end') so it inserts at the current cursor position
-        editor.injectJS("this.editor.commands.insertContent('[[')");
+        // We insert [[]] and place cursor inside at currentPos+2
+        editor.injectJS(`
+          (function() {
+            const { from } = this.editor.state.selection;
+            this.editor.chain().focus().insertContent('[[]]').setTextSelection(from + 2).run();
+          }).call(this);
+        `);
       },
     },
   ];
@@ -451,7 +456,7 @@ export function AddNoteScreen() {
                 <TouchableOpacity
                   style={[styles.suggestItem, { borderBottomColor: colors.border }]}
                   onPress={() => insertWikilink(item.title)}>
-                  <Icon name="insert_link" size={16} color={colors.accent} />
+                  <Icon name="insert-link" size={16} color={colors.accent} />
                   <Text style={[styles.suggestText, { color: colors.text }]}>{item.title}</Text>
                 </TouchableOpacity>
               )}
@@ -463,7 +468,7 @@ export function AddNoteScreen() {
         {plainText.length > 20 && (
           <View style={[styles.aiBar, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <View style={styles.aiBarHeader}>
-              <Icon name="auto_awesome" size={14} color={colors.accent} />
+              <Icon name="auto-awesome" size={14} color={colors.accent} />
               <Text style={[styles.aiBarTitle, { color: colors.accent }]}>AI Assistant</Text>
             </View>
             {aiWorking ? (
@@ -476,7 +481,7 @@ export function AddNoteScreen() {
                 <TouchableOpacity
                   style={[styles.aiBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
                   onPress={handleAIImprove} activeOpacity={0.75}>
-                  <Icon name="auto_fix_high" size={15} color={colors.accent} />
+                  <Icon name="auto-fix-high" size={15} color={colors.accent} />
                   <Text style={[styles.aiBtnText, { color: colors.text }]}>Improve</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
